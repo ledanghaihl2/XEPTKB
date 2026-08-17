@@ -55,8 +55,6 @@
     --color-indigo-700: oklch(45.7% 0.24 277.023);
     --color-purple-600: oklch(55.8% 0.288 302.321);
     --color-purple-700: oklch(49.6% 0.265 301.924);
-    --color-pink-600: oklch(59.2% 0.249 0.584);
-    --color-pink-700: oklch(52.5% 0.223 3.958);
     --color-rose-50: oklch(96.9% 0.015 12.422);
     --color-rose-100: oklch(94.1% 0.03 12.58);
     --color-rose-200: oklch(89.2% 0.058 10.001);
@@ -512,6 +510,9 @@
   .hidden {
     display: none;
   }
+  .hidden\! {
+    display: none !important;
+  }
   .inline {
     display: inline;
   }
@@ -714,6 +715,9 @@
   }
   .transform {
     transform: var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,) var(--tw-skew-x,) var(--tw-skew-y,);
+  }
+  .transform\! {
+    transform: var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,) var(--tw-skew-x,) var(--tw-skew-y,) !important;
   }
   .transform-cpu {
     transform: var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,) var(--tw-skew-x,) var(--tw-skew-y,);
