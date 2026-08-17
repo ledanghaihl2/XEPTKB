@@ -1,0 +1,9 @@
+HƯỚNG DẪN SỬ DỤNG PHẦN MỀM XẾP THỜI KHÓA BIỂU NGOẠI TUYẾN
+
+1. Để sử dụng phần mềm mà không cần mạng Internet (ngoại tuyến):
+   -> Hãy nhấp đúp chuột vào file "PhanMemXepTKB_NgoaiTuyen.html" để mở trên trình duyệt (Chrome, Cốc Cốc, Edge...).
+   
+2. Để tiếp tục dự án đang làm việc:
+   -> Sau khi mở phần mềm, bạn có thể tự thiết lập lại dữ liệu hoặc có tính năng Nhập dữ liệu (Import). Tuy nhiên ở phiên bản này, bạn có thể copy nội dung từ file "DuLieu_DuAn.json" hoặc giữ file này lại để làm bản sao lưu dự án của bạn (chứa đầy đủ danh sách phân công, ràng buộc và thời khóa biểu).
+
+Chúc bạn sử dụng phần mềm hiệu quả!

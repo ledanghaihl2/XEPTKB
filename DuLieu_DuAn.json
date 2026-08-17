@@ -1,0 +1,2931 @@
+{
+  "data": [
+    {
+      "id": 1,
+      "teacher": "Dương",
+      "subject": "Công nghệ",
+      "className": "8A",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 2,
+      "teacher": "Dương",
+      "subject": "Công nghệ",
+      "className": "8B",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 3,
+      "teacher": "Hà",
+      "subject": "KHTN-sinh",
+      "className": "7A",
+      "sessionsPerWeek": 3
+    },
+    {
+      "id": 4,
+      "teacher": "V. Chung",
+      "subject": "GDTC",
+      "className": "7A",
+      "sessionsPerWeek": 2
+    },
+    {
+      "id": 5,
+      "teacher": "V. Chung",
+      "subject": "GDTC",
+      "className": "7B",
+      "sessionsPerWeek": 2
+    },
+    {
+      "id": 6,
+      "teacher": "V. Chung",
+      "subject": "GDTC",
+      "className": "8B",
+      "sessionsPerWeek": 2
+    },
+    {
+      "id": 7,
+      "teacher": "V. Chung",
+      "subject": "GDTC",
+      "className": "9A",
+      "sessionsPerWeek": 2
+    },
+    {
+      "id": 8,
+      "teacher": "V. Chung",
+      "subject": "GDTC",
+      "className": "9B",
+      "sessionsPerWeek": 2
+    },
+    {
+      "id": 9,
+      "teacher": "Thiệu",
+      "subject": "GDTC",
+      "className": "6A",
+      "sessionsPerWeek": 2
+    },
+    {
+      "id": 10,
+      "teacher": "Thiệu",
+      "subject": "GDTC",
+      "className": "6B",
+      "sessionsPerWeek": 2
+    },
+    {
+      "id": 11,
+      "teacher": "Thiệu",
+      "subject": "GDTC",
+      "className": "6C",
+      "sessionsPerWeek": 2
+    },
+    {
+      "id": 12,
+      "teacher": "Thiệu",
+      "subject": "GDTC",
+      "className": "8B",
+      "sessionsPerWeek": 2
+    },
+    {
+      "id": 13,
+      "teacher": "Thiệu",
+      "subject": "GDTC",
+      "className": "8C",
+      "sessionsPerWeek": 2
+    },
+    {
+      "id": 14,
+      "teacher": "Thiệu",
+      "subject": "GDTC",
+      "className": "7C",
+      "sessionsPerWeek": 2
+    },
+    {
+      "id": 15,
+      "teacher": "L. Trung",
+      "subject": "Âm nhạc",
+      "className": "6A",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 16,
+      "teacher": "L. Trung",
+      "subject": "Âm nhạc",
+      "className": "6B",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 17,
+      "teacher": "L. Trung",
+      "subject": "Âm nhạc",
+      "className": "6C",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 18,
+      "teacher": "L. Trung",
+      "subject": "Âm nhạc",
+      "className": "7A",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 19,
+      "teacher": "L. Trung",
+      "subject": "Âm nhạc",
+      "className": "7B",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 20,
+      "teacher": "L. Trung",
+      "subject": "Âm nhạc",
+      "className": "7C",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 21,
+      "teacher": "L. Trung",
+      "subject": "Âm nhạc",
+      "className": "8A",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 22,
+      "teacher": "L. Trung",
+      "subject": "Âm nhạc",
+      "className": "8B",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 23,
+      "teacher": "L. Trung",
+      "subject": "Âm nhạc",
+      "className": "8C",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 24,
+      "teacher": "L. Trung",
+      "subject": "Âm nhạc",
+      "className": "9A",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 25,
+      "teacher": "L. Trung",
+      "subject": "Âm nhạc",
+      "className": "9B",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 26,
+      "teacher": "L. Trung",
+      "subject": "Công nghệ",
+      "className": "9B",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 27,
+      "teacher": "Nguyên",
+      "subject": "Mĩ thuật",
+      "className": "6A",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 28,
+      "teacher": "Nguyên",
+      "subject": "Mĩ thuật",
+      "className": "6B",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 29,
+      "teacher": "Nguyên",
+      "subject": "Mĩ thuật",
+      "className": "6C",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 30,
+      "teacher": "Nguyên",
+      "subject": "Mĩ thuật",
+      "className": "7A",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 31,
+      "teacher": "Nguyên",
+      "subject": "Mĩ thuật",
+      "className": "7B",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 32,
+      "teacher": "Nguyên",
+      "subject": "Mĩ thuật",
+      "className": "7C",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 33,
+      "teacher": "Nguyên",
+      "subject": "Mĩ thuật",
+      "className": "8A",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 34,
+      "teacher": "Nguyên",
+      "subject": "Mĩ thuật",
+      "className": "8B",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 35,
+      "teacher": "Nguyên",
+      "subject": "Mĩ thuật",
+      "className": "8C",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 36,
+      "teacher": "Nguyên",
+      "subject": "Mĩ thuật",
+      "className": "9A",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 37,
+      "teacher": "Nguyên",
+      "subject": "Mĩ thuật",
+      "className": "9B",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 38,
+      "teacher": "Nguyên",
+      "subject": "Công nghệ",
+      "className": "7C",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 39,
+      "teacher": "Phương",
+      "subject": "T Anh",
+      "className": "9A",
+      "sessionsPerWeek": 3
+    },
+    {
+      "id": 40,
+      "teacher": "Phương",
+      "subject": "T Anh",
+      "className": "8A",
+      "sessionsPerWeek": 3
+    },
+    {
+      "id": 41,
+      "teacher": "Phương",
+      "subject": "T Anh",
+      "className": "8B",
+      "sessionsPerWeek": 3
+    },
+    {
+      "id": 42,
+      "teacher": "Phương",
+      "subject": "T Anh",
+      "className": "8C",
+      "sessionsPerWeek": 3
+    },
+    {
+      "id": 43,
+      "teacher": "Phương",
+      "subject": "T Anh",
+      "className": "6A",
+      "sessionsPerWeek": 3
+    },
+    {
+      "id": 44,
+      "teacher": "Phương",
+      "subject": "T Anh",
+      "className": "6B",
+      "sessionsPerWeek": 3
+    },
+    {
+      "id": 45,
+      "teacher": "Phương",
+      "subject": "T Anh",
+      "className": "6C",
+      "sessionsPerWeek": 3
+    },
+    {
+      "id": 46,
+      "teacher": "Huế",
+      "subject": "T Anh",
+      "className": "7A",
+      "sessionsPerWeek": 3
+    },
+    {
+      "id": 47,
+      "teacher": "Huế",
+      "subject": "T Anh",
+      "className": "7B",
+      "sessionsPerWeek": 3
+    },
+    {
+      "id": 48,
+      "teacher": "Huế",
+      "subject": "T Anh",
+      "className": "7C",
+      "sessionsPerWeek": 3
+    },
+    {
+      "id": 49,
+      "teacher": "Huế",
+      "subject": "T Anh",
+      "className": "9B",
+      "sessionsPerWeek": 3
+    },
+    {
+      "id": 50,
+      "teacher": "Vinh",
+      "subject": "KHTN-SINH",
+      "className": "6B",
+      "sessionsPerWeek": 3
+    },
+    {
+      "id": 51,
+      "teacher": "Vinh",
+      "subject": "KHTN-SINH",
+      "className": "6C",
+      "sessionsPerWeek": 3
+    },
+    {
+      "id": 52,
+      "teacher": "Vinh",
+      "subject": "KHTN-SINH",
+      "className": "7B",
+      "sessionsPerWeek": 3
+    },
+    {
+      "id": 53,
+      "teacher": "Vinh",
+      "subject": "KHTN-SINH",
+      "className": "7C",
+      "sessionsPerWeek": 3
+    },
+    {
+      "id": 54,
+      "teacher": "Vinh",
+      "subject": "KHTN-SINH",
+      "className": "8C",
+      "sessionsPerWeek": 2
+    },
+    {
+      "id": 55,
+      "teacher": "Sen",
+      "subject": "KHTN-HÓA",
+      "className": "9A",
+      "sessionsPerWeek": 2
+    },
+    {
+      "id": 56,
+      "teacher": "Sen",
+      "subject": "KHTN-HÓA",
+      "className": "9B",
+      "sessionsPerWeek": 2
+    },
+    {
+      "id": 57,
+      "teacher": "Sen",
+      "subject": "KHTN-HÓA",
+      "className": "8A",
+      "sessionsPerWeek": 2
+    },
+    {
+      "id": 58,
+      "teacher": "Sen",
+      "subject": "KHTN-HÓA",
+      "className": "8B",
+      "sessionsPerWeek": 2
+    },
+    {
+      "id": 59,
+      "teacher": "Sen",
+      "subject": "KHTN-HÓA",
+      "className": "6A",
+      "sessionsPerWeek": 3
+    },
+    {
+      "id": 60,
+      "teacher": "Ngơi",
+      "subject": "Ngữ văn",
+      "className": "6B",
+      "sessionsPerWeek": 4
+    },
+    {
+      "id": 61,
+      "teacher": "Ngơi",
+      "subject": "Ngữ văn",
+      "className": "6C",
+      "sessionsPerWeek": 4
+    },
+    {
+      "id": 62,
+      "teacher": "Ngơi",
+      "subject": "Ngữ văn",
+      "className": "9B",
+      "sessionsPerWeek": 4
+    },
+    {
+      "id": 63,
+      "teacher": "Ngơi",
+      "subject": "Sử",
+      "className": "6B",
+      "sessionsPerWeek": 2
+    },
+    {
+      "id": 64,
+      "teacher": "Ngơi",
+      "subject": "Sử",
+      "className": "6C",
+      "sessionsPerWeek": 2
+    },
+    {
+      "id": 65,
+      "teacher": "Hoan",
+      "subject": "Ngữ văn",
+      "className": "8B",
+      "sessionsPerWeek": 4
+    },
+    {
+      "id": 66,
+      "teacher": "Hoan",
+      "subject": "Ngữ văn",
+      "className": "8C",
+      "sessionsPerWeek": 4
+    },
+    {
+      "id": 67,
+      "teacher": "Hoan",
+      "subject": "GDCD",
+      "className": "6A",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 68,
+      "teacher": "Hoan",
+      "subject": "GDCD",
+      "className": "6B",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 69,
+      "teacher": "Hoan",
+      "subject": "GDCD",
+      "className": "6C",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 70,
+      "teacher": "Hoan",
+      "subject": "GDCD",
+      "className": "8A",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 71,
+      "teacher": "Hoan",
+      "subject": "GDCD",
+      "className": "8B",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 72,
+      "teacher": "Hoan",
+      "subject": "GDCD",
+      "className": "8C",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 73,
+      "teacher": "Hoan",
+      "subject": "GDCD",
+      "className": "7B",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 74,
+      "teacher": "Hoan",
+      "subject": "GDCD",
+      "className": "7C",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 75,
+      "teacher": "Lan",
+      "subject": "Ngữ văn",
+      "className": "8A",
+      "sessionsPerWeek": 4
+    },
+    {
+      "id": 76,
+      "teacher": "Lan",
+      "subject": "Ngữ văn",
+      "className": "9A",
+      "sessionsPerWeek": 4
+    },
+    {
+      "id": 77,
+      "teacher": "Lan",
+      "subject": "GDCD",
+      "className": "9A",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 78,
+      "teacher": "Lan",
+      "subject": "GDCD",
+      "className": "9B",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 79,
+      "teacher": "Lan",
+      "subject": "GDCD",
+      "className": "7A",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 80,
+      "teacher": "Hiếu",
+      "subject": "Ngữ văn",
+      "className": "6A",
+      "sessionsPerWeek": 4
+    },
+    {
+      "id": 81,
+      "teacher": "Hiếu",
+      "subject": "Ngữ văn",
+      "className": "7A",
+      "sessionsPerWeek": 4
+    },
+    {
+      "id": 82,
+      "teacher": "Hiếu",
+      "subject": "Sử",
+      "className": "9A",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 83,
+      "teacher": "Hiếu",
+      "subject": "Sử",
+      "className": "9B",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 84,
+      "teacher": "Hiếu",
+      "subject": "Sử",
+      "className": "7A",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 85,
+      "teacher": "Hiếu",
+      "subject": "Sử",
+      "className": "7B",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 86,
+      "teacher": "Hiếu",
+      "subject": "Sử",
+      "className": "7C",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 87,
+      "teacher": "Trí",
+      "subject": "Toán",
+      "className": "8A",
+      "sessionsPerWeek": 4
+    },
+    {
+      "id": 88,
+      "teacher": "Trí",
+      "subject": "Toán",
+      "className": "7C",
+      "sessionsPerWeek": 4
+    },
+    {
+      "id": 89,
+      "teacher": "Trí",
+      "subject": "KHTN-LÍ",
+      "className": "8A",
+      "sessionsPerWeek": 2
+    },
+    {
+      "id": 90,
+      "teacher": "Trí",
+      "subject": "KHTN-LÍ",
+      "className": "8B",
+      "sessionsPerWeek": 2
+    },
+    {
+      "id": 91,
+      "teacher": "Trí",
+      "subject": "KHTN-LÍ",
+      "className": "8C",
+      "sessionsPerWeek": 2
+    },
+    {
+      "id": 92,
+      "teacher": "Thực",
+      "subject": "Toán",
+      "className": "6C",
+      "sessionsPerWeek": 4
+    },
+    {
+      "id": 93,
+      "teacher": "Thực",
+      "subject": "Toán",
+      "className": "9B",
+      "sessionsPerWeek": 4
+    },
+    {
+      "id": 94,
+      "teacher": "Thực",
+      "subject": "KHTN-LÍ",
+      "className": "7A",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 95,
+      "teacher": "Thực",
+      "subject": "KHTN-LÍ",
+      "className": "7B",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 96,
+      "teacher": "Thực",
+      "subject": "KHTN-LÍ",
+      "className": "7C",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 97,
+      "teacher": "Dũng",
+      "subject": "Toán",
+      "className": "6A",
+      "sessionsPerWeek": 4
+    },
+    {
+      "id": 98,
+      "teacher": "Dũng",
+      "subject": "Toán",
+      "className": "8C",
+      "sessionsPerWeek": 4
+    },
+    {
+      "id": 99,
+      "teacher": "Dũng",
+      "subject": "KHTN-LÍ",
+      "className": "6A",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 100,
+      "teacher": "Dũng",
+      "subject": "KHTN-LÍ",
+      "className": "6B",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 101,
+      "teacher": "Dũng",
+      "subject": "KHTN-LÍ",
+      "className": "6C",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 102,
+      "teacher": "Dũng",
+      "subject": "KHTN-LÍ",
+      "className": "9A",
+      "sessionsPerWeek": 2
+    },
+    {
+      "id": 103,
+      "teacher": "Dũng",
+      "subject": "KHTN-LÍ",
+      "className": "9B",
+      "sessionsPerWeek": 2
+    },
+    {
+      "id": 104,
+      "teacher": "Đặng",
+      "subject": "Toán",
+      "className": "6B",
+      "sessionsPerWeek": 4
+    },
+    {
+      "id": 105,
+      "teacher": "Đặng",
+      "subject": "Tin",
+      "className": "6A",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 106,
+      "teacher": "Đặng",
+      "subject": "Tin",
+      "className": "6B",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 107,
+      "teacher": "Đặng",
+      "subject": "Tin",
+      "className": "6C",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 108,
+      "teacher": "Đặng",
+      "subject": "Tin",
+      "className": "7A",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 109,
+      "teacher": "Đặng",
+      "subject": "Tin",
+      "className": "7B",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 110,
+      "teacher": "Đặng",
+      "subject": "Tin",
+      "className": "7C",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 111,
+      "teacher": "Đặng",
+      "subject": "Tin",
+      "className": "8A",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 112,
+      "teacher": "Đặng",
+      "subject": "Tin",
+      "className": "8B",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 113,
+      "teacher": "Đặng",
+      "subject": "Tin",
+      "className": "8C",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 114,
+      "teacher": "Đặng",
+      "subject": "Tin",
+      "className": "9A",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 115,
+      "teacher": "Đặng",
+      "subject": "Tin",
+      "className": "9B",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 116,
+      "teacher": "Hoa",
+      "subject": "Địa",
+      "className": "6A",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 117,
+      "teacher": "Hoa",
+      "subject": "Địa",
+      "className": "6B",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 118,
+      "teacher": "Hoa",
+      "subject": "Địa",
+      "className": "6C",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 119,
+      "teacher": "Hoa",
+      "subject": "Địa",
+      "className": "7A",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 120,
+      "teacher": "Hoa",
+      "subject": "Địa",
+      "className": "7B",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 121,
+      "teacher": "Hoa",
+      "subject": "Địa",
+      "className": "7C",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 122,
+      "teacher": "Hoa",
+      "subject": "Địa",
+      "className": "8A",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 123,
+      "teacher": "Hoa",
+      "subject": "Địa",
+      "className": "8B",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 124,
+      "teacher": "Hoa",
+      "subject": "Địa",
+      "className": "8C",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 125,
+      "teacher": "Hoa",
+      "subject": "Địa",
+      "className": "9A",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 126,
+      "teacher": "Hoa",
+      "subject": "Địa",
+      "className": "9B",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 127,
+      "teacher": "Thành",
+      "subject": "Toán",
+      "className": "9A",
+      "sessionsPerWeek": 4
+    },
+    {
+      "id": 128,
+      "teacher": "Thành",
+      "subject": "Toán",
+      "className": "8B",
+      "sessionsPerWeek": 4
+    },
+    {
+      "id": 129,
+      "teacher": "Yến",
+      "subject": "Sử",
+      "className": "8A",
+      "sessionsPerWeek": 2
+    },
+    {
+      "id": 130,
+      "teacher": "Yến",
+      "subject": "Sử",
+      "className": "8B",
+      "sessionsPerWeek": 2
+    },
+    {
+      "id": 131,
+      "teacher": "Yến",
+      "subject": "Sử",
+      "className": "8C",
+      "sessionsPerWeek": 2
+    },
+    {
+      "id": 132,
+      "teacher": "Yến",
+      "subject": "Sử",
+      "className": "6A",
+      "sessionsPerWeek": 2
+    },
+    {
+      "id": 133,
+      "teacher": "Đạt",
+      "subject": "Toán",
+      "className": "7A",
+      "sessionsPerWeek": 4
+    },
+    {
+      "id": 134,
+      "teacher": "Đạt",
+      "subject": "Toán",
+      "className": "7B",
+      "sessionsPerWeek": 4
+    },
+    {
+      "id": 135,
+      "teacher": "Đạt",
+      "subject": "Công nghệ",
+      "className": "8C",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 136,
+      "teacher": "Thảo",
+      "subject": "Ngữ văn",
+      "className": "7B",
+      "sessionsPerWeek": 4
+    },
+    {
+      "id": 137,
+      "teacher": "Thảo",
+      "subject": "Ngữ văn",
+      "className": "7C",
+      "sessionsPerWeek": 4
+    },
+    {
+      "id": 138,
+      "teacher": "Thảo",
+      "subject": "Công nghệ",
+      "className": "6A",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 139,
+      "teacher": "Thảo",
+      "subject": "Công nghệ",
+      "className": "6B",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 140,
+      "teacher": "Thảo",
+      "subject": "Công nghệ",
+      "className": "6C",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 141,
+      "teacher": "Thảo",
+      "subject": "Công nghệ",
+      "className": "7A",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 142,
+      "teacher": "Thảo",
+      "subject": "Công nghệ",
+      "className": "7B",
+      "sessionsPerWeek": 1
+    },
+    {
+      "id": 143,
+      "teacher": "Thảo",
+      "subject": "Công nghệ",
+      "className": "9A",
+      "sessionsPerWeek": 1
+    }
+  ],
+  "constraints": [],
+  "schedule": {
+    "6A": [
+      [
+        {
+          "day": 0,
+          "period": 0,
+          "subject": "Ngữ văn",
+          "teacher": "Hiếu"
+        },
+        {
+          "day": 0,
+          "period": 1,
+          "subject": "T Anh",
+          "teacher": "Phương"
+        },
+        {
+          "day": 0,
+          "period": 2,
+          "subject": "Mĩ thuật",
+          "teacher": "Nguyên"
+        },
+        {
+          "day": 0,
+          "period": 3,
+          "subject": "GDCD",
+          "teacher": "Hoan"
+        },
+        null,
+        null,
+        null,
+        null
+      ],
+      [
+        {
+          "day": 1,
+          "period": 0,
+          "subject": "Ngữ văn",
+          "teacher": "Hiếu"
+        },
+        {
+          "day": 1,
+          "period": 1,
+          "subject": "KHTN-HÓA",
+          "teacher": "Sen"
+        },
+        {
+          "day": 1,
+          "period": 2,
+          "subject": "Toán",
+          "teacher": "Dũng"
+        },
+        {
+          "day": 1,
+          "period": 3,
+          "subject": "Tin",
+          "teacher": "Đặng"
+        },
+        null,
+        {
+          "day": 1,
+          "period": 5,
+          "subject": "Địa",
+          "teacher": "Hoa"
+        },
+        {
+          "day": 1,
+          "period": 6,
+          "subject": "GDTC",
+          "teacher": "Thiệu"
+        },
+        null
+      ],
+      [
+        {
+          "day": 2,
+          "period": 0,
+          "subject": "Toán",
+          "teacher": "Dũng"
+        },
+        {
+          "day": 2,
+          "period": 1,
+          "subject": "Ngữ văn",
+          "teacher": "Hiếu"
+        },
+        {
+          "day": 2,
+          "period": 2,
+          "subject": "GDTC",
+          "teacher": "Thiệu"
+        },
+        {
+          "day": 2,
+          "period": 3,
+          "subject": "T Anh",
+          "teacher": "Phương"
+        },
+        {
+          "day": 2,
+          "period": 4,
+          "subject": "Công nghệ",
+          "teacher": "Thảo"
+        },
+        null,
+        null,
+        null
+      ],
+      [
+        {
+          "day": 3,
+          "period": 0,
+          "subject": "T Anh",
+          "teacher": "Phương"
+        },
+        {
+          "day": 3,
+          "period": 1,
+          "subject": "Sử",
+          "teacher": "Yến"
+        },
+        {
+          "day": 3,
+          "period": 2,
+          "subject": "KHTN-HÓA",
+          "teacher": "Sen"
+        },
+        {
+          "day": 3,
+          "period": 3,
+          "subject": "KHTN-LÍ",
+          "teacher": "Dũng"
+        },
+        {
+          "day": 3,
+          "period": 4,
+          "subject": "Toán",
+          "teacher": "Dũng"
+        },
+        null,
+        null,
+        null
+      ],
+      [
+        {
+          "day": 4,
+          "period": 0,
+          "subject": "Toán",
+          "teacher": "Dũng"
+        },
+        {
+          "day": 4,
+          "period": 1,
+          "subject": "KHTN-HÓA",
+          "teacher": "Sen"
+        },
+        {
+          "day": 4,
+          "period": 2,
+          "subject": "Âm nhạc",
+          "teacher": "L. Trung"
+        },
+        {
+          "day": 4,
+          "period": 3,
+          "subject": "Sử",
+          "teacher": "Yến"
+        },
+        {
+          "day": 4,
+          "period": 4,
+          "subject": "Ngữ văn",
+          "teacher": "Hiếu"
+        },
+        null,
+        null,
+        null
+      ]
+    ],
+    "6B": [
+      [
+        {
+          "day": 0,
+          "period": 0,
+          "subject": "Toán",
+          "teacher": "Đặng"
+        },
+        {
+          "day": 0,
+          "period": 1,
+          "subject": "Sử",
+          "teacher": "Ngơi"
+        },
+        {
+          "day": 0,
+          "period": 2,
+          "subject": "Âm nhạc",
+          "teacher": "L. Trung"
+        },
+        {
+          "day": 0,
+          "period": 3,
+          "subject": "Ngữ văn",
+          "teacher": "Ngơi"
+        },
+        null,
+        {
+          "day": 0,
+          "period": 5,
+          "subject": "GDTC",
+          "teacher": "Thiệu"
+        },
+        null,
+        null
+      ],
+      [
+        {
+          "day": 1,
+          "period": 0,
+          "subject": "KHTN-SINH",
+          "teacher": "Vinh"
+        },
+        {
+          "day": 1,
+          "period": 1,
+          "subject": "T Anh",
+          "teacher": "Phương"
+        },
+        {
+          "day": 1,
+          "period": 2,
+          "subject": "GDTC",
+          "teacher": "Thiệu"
+        },
+        {
+          "day": 1,
+          "period": 3,
+          "subject": "KHTN-LÍ",
+          "teacher": "Dũng"
+        },
+        null,
+        {
+          "day": 1,
+          "period": 5,
+          "subject": "Tin",
+          "teacher": "Đặng"
+        },
+        null,
+        null
+      ],
+      [
+        {
+          "day": 2,
+          "period": 0,
+          "subject": "Ngữ văn",
+          "teacher": "Ngơi"
+        },
+        {
+          "day": 2,
+          "period": 1,
+          "subject": "T Anh",
+          "teacher": "Phương"
+        },
+        {
+          "day": 2,
+          "period": 2,
+          "subject": "KHTN-SINH",
+          "teacher": "Vinh"
+        },
+        {
+          "day": 2,
+          "period": 3,
+          "subject": "Công nghệ",
+          "teacher": "Thảo"
+        },
+        {
+          "day": 2,
+          "period": 4,
+          "subject": "Toán",
+          "teacher": "Đặng"
+        },
+        null,
+        null,
+        null
+      ],
+      [
+        {
+          "day": 3,
+          "period": 0,
+          "subject": "Toán",
+          "teacher": "Đặng"
+        },
+        {
+          "day": 3,
+          "period": 1,
+          "subject": "Ngữ văn",
+          "teacher": "Ngơi"
+        },
+        {
+          "day": 3,
+          "period": 2,
+          "subject": "T Anh",
+          "teacher": "Phương"
+        },
+        {
+          "day": 3,
+          "period": 3,
+          "subject": "KHTN-SINH",
+          "teacher": "Vinh"
+        },
+        {
+          "day": 3,
+          "period": 4,
+          "subject": "GDCD",
+          "teacher": "Hoan"
+        },
+        null,
+        null,
+        null
+      ],
+      [
+        {
+          "day": 4,
+          "period": 0,
+          "subject": "Ngữ văn",
+          "teacher": "Ngơi"
+        },
+        {
+          "day": 4,
+          "period": 1,
+          "subject": "Toán",
+          "teacher": "Đặng"
+        },
+        {
+          "day": 4,
+          "period": 2,
+          "subject": "Mĩ thuật",
+          "teacher": "Nguyên"
+        },
+        {
+          "day": 4,
+          "period": 3,
+          "subject": "Sử",
+          "teacher": "Ngơi"
+        },
+        {
+          "day": 4,
+          "period": 4,
+          "subject": "Địa",
+          "teacher": "Hoa"
+        },
+        null,
+        null,
+        null
+      ]
+    ],
+    "6C": [
+      [
+        {
+          "day": 0,
+          "period": 0,
+          "subject": "Ngữ văn",
+          "teacher": "Ngơi"
+        },
+        {
+          "day": 0,
+          "period": 1,
+          "subject": "Toán",
+          "teacher": "Thực"
+        },
+        {
+          "day": 0,
+          "period": 2,
+          "subject": "GDTC",
+          "teacher": "Thiệu"
+        },
+        {
+          "day": 0,
+          "period": 3,
+          "subject": "Mĩ thuật",
+          "teacher": "Nguyên"
+        },
+        null,
+        {
+          "day": 0,
+          "period": 5,
+          "subject": "T Anh",
+          "teacher": "Phương"
+        },
+        null,
+        null
+      ],
+      [
+        {
+          "day": 1,
+          "period": 0,
+          "subject": "Ngữ văn",
+          "teacher": "Ngơi"
+        },
+        {
+          "day": 1,
+          "period": 1,
+          "subject": "KHTN-SINH",
+          "teacher": "Vinh"
+        },
+        {
+          "day": 1,
+          "period": 2,
+          "subject": "Âm nhạc",
+          "teacher": "L. Trung"
+        },
+        {
+          "day": 1,
+          "period": 3,
+          "subject": "Sử",
+          "teacher": "Ngơi"
+        },
+        null,
+        {
+          "day": 1,
+          "period": 5,
+          "subject": "Toán",
+          "teacher": "Thực"
+        },
+        null,
+        null
+      ],
+      [
+        {
+          "day": 2,
+          "period": 0,
+          "subject": "Toán",
+          "teacher": "Thực"
+        },
+        {
+          "day": 2,
+          "period": 1,
+          "subject": "Ngữ văn",
+          "teacher": "Ngơi"
+        },
+        {
+          "day": 2,
+          "period": 2,
+          "subject": "Sử",
+          "teacher": "Ngơi"
+        },
+        {
+          "day": 2,
+          "period": 3,
+          "subject": "KHTN-SINH",
+          "teacher": "Vinh"
+        },
+        {
+          "day": 2,
+          "period": 4,
+          "subject": "GDCD",
+          "teacher": "Hoan"
+        },
+        null,
+        null,
+        null
+      ],
+      [
+        {
+          "day": 3,
+          "period": 0,
+          "subject": "Toán",
+          "teacher": "Thực"
+        },
+        {
+          "day": 3,
+          "period": 1,
+          "subject": "T Anh",
+          "teacher": "Phương"
+        },
+        {
+          "day": 3,
+          "period": 2,
+          "subject": "KHTN-LÍ",
+          "teacher": "Dũng"
+        },
+        {
+          "day": 3,
+          "period": 3,
+          "subject": "Địa",
+          "teacher": "Hoa"
+        },
+        {
+          "day": 3,
+          "period": 4,
+          "subject": "Ngữ văn",
+          "teacher": "Ngơi"
+        },
+        null,
+        null,
+        null
+      ],
+      [
+        {
+          "day": 4,
+          "period": 0,
+          "subject": "T Anh",
+          "teacher": "Phương"
+        },
+        {
+          "day": 4,
+          "period": 1,
+          "subject": "GDTC",
+          "teacher": "Thiệu"
+        },
+        {
+          "day": 4,
+          "period": 2,
+          "subject": "KHTN-SINH",
+          "teacher": "Vinh"
+        },
+        {
+          "day": 4,
+          "period": 3,
+          "subject": "Công nghệ",
+          "teacher": "Thảo"
+        },
+        {
+          "day": 4,
+          "period": 4,
+          "subject": "Tin",
+          "teacher": "Đặng"
+        },
+        null,
+        null,
+        null
+      ]
+    ],
+    "7A": [
+      [
+        {
+          "day": 0,
+          "period": 0,
+          "subject": "Toán",
+          "teacher": "Đạt"
+        },
+        {
+          "day": 0,
+          "period": 1,
+          "subject": "T Anh",
+          "teacher": "Huế"
+        },
+        {
+          "day": 0,
+          "period": 2,
+          "subject": "Ngữ văn",
+          "teacher": "Hiếu"
+        },
+        {
+          "day": 0,
+          "period": 3,
+          "subject": "Âm nhạc",
+          "teacher": "L. Trung"
+        },
+        null,
+        {
+          "day": 0,
+          "period": 5,
+          "subject": "GDTC",
+          "teacher": "V. Chung"
+        },
+        null,
+        null
+      ],
+      [
+        {
+          "day": 1,
+          "period": 0,
+          "subject": "GDTC",
+          "teacher": "V. Chung"
+        },
+        {
+          "day": 1,
+          "period": 1,
+          "subject": "T Anh",
+          "teacher": "Huế"
+        },
+        {
+          "day": 1,
+          "period": 2,
+          "subject": "Toán",
+          "teacher": "Đạt"
+        },
+        {
+          "day": 1,
+          "period": 3,
+          "subject": "KHTN-LÍ",
+          "teacher": "Thực"
+        },
+        null,
+        {
+          "day": 1,
+          "period": 5,
+          "subject": "Công nghệ",
+          "teacher": "Thảo"
+        },
+        null,
+        null
+      ],
+      [
+        {
+          "day": 2,
+          "period": 0,
+          "subject": "Ngữ văn",
+          "teacher": "Hiếu"
+        },
+        {
+          "day": 2,
+          "period": 1,
+          "subject": "Toán",
+          "teacher": "Đạt"
+        },
+        {
+          "day": 2,
+          "period": 2,
+          "subject": "KHTN-sinh",
+          "teacher": "Hà"
+        },
+        {
+          "day": 2,
+          "period": 3,
+          "subject": "Địa",
+          "teacher": "Hoa"
+        },
+        null,
+        null,
+        null,
+        null
+      ],
+      [
+        {
+          "day": 3,
+          "period": 0,
+          "subject": "KHTN-sinh",
+          "teacher": "Hà"
+        },
+        {
+          "day": 3,
+          "period": 1,
+          "subject": "Ngữ văn",
+          "teacher": "Hiếu"
+        },
+        {
+          "day": 3,
+          "period": 2,
+          "subject": "Mĩ thuật",
+          "teacher": "Nguyên"
+        },
+        {
+          "day": 3,
+          "period": 3,
+          "subject": "GDCD",
+          "teacher": "Lan"
+        },
+        {
+          "day": 3,
+          "period": 4,
+          "subject": "Tin",
+          "teacher": "Đặng"
+        },
+        null,
+        null,
+        null
+      ],
+      [
+        {
+          "day": 4,
+          "period": 0,
+          "subject": "Ngữ văn",
+          "teacher": "Hiếu"
+        },
+        {
+          "day": 4,
+          "period": 1,
+          "subject": "KHTN-sinh",
+          "teacher": "Hà"
+        },
+        {
+          "day": 4,
+          "period": 2,
+          "subject": "Sử",
+          "teacher": "Hiếu"
+        },
+        {
+          "day": 4,
+          "period": 3,
+          "subject": "T Anh",
+          "teacher": "Huế"
+        },
+        {
+          "day": 4,
+          "period": 4,
+          "subject": "Toán",
+          "teacher": "Đạt"
+        },
+        null,
+        null,
+        null
+      ]
+    ],
+    "7B": [
+      [
+        {
+          "day": 0,
+          "period": 0,
+          "subject": "Ngữ văn",
+          "teacher": "Thảo"
+        },
+        {
+          "day": 0,
+          "period": 1,
+          "subject": "KHTN-SINH",
+          "teacher": "Vinh"
+        },
+        {
+          "day": 0,
+          "period": 2,
+          "subject": "Công nghệ",
+          "teacher": "Thảo"
+        },
+        {
+          "day": 0,
+          "period": 3,
+          "subject": "GDTC",
+          "teacher": "V. Chung"
+        },
+        null,
+        {
+          "day": 0,
+          "period": 5,
+          "subject": "Toán",
+          "teacher": "Đạt"
+        },
+        null,
+        null
+      ],
+      [
+        {
+          "day": 1,
+          "period": 0,
+          "subject": "Toán",
+          "teacher": "Đạt"
+        },
+        {
+          "day": 1,
+          "period": 1,
+          "subject": "GDTC",
+          "teacher": "V. Chung"
+        },
+        {
+          "day": 1,
+          "period": 2,
+          "subject": "T Anh",
+          "teacher": "Huế"
+        },
+        {
+          "day": 1,
+          "period": 3,
+          "subject": "Mĩ thuật",
+          "teacher": "Nguyên"
+        },
+        null,
+        null,
+        null,
+        null
+      ],
+      [
+        {
+          "day": 2,
+          "period": 0,
+          "subject": "Toán",
+          "teacher": "Đạt"
+        },
+        {
+          "day": 2,
+          "period": 1,
+          "subject": "T Anh",
+          "teacher": "Huế"
+        },
+        {
+          "day": 2,
+          "period": 2,
+          "subject": "Ngữ văn",
+          "teacher": "Thảo"
+        },
+        {
+          "day": 2,
+          "period": 3,
+          "subject": "Tin",
+          "teacher": "Đặng"
+        },
+        {
+          "day": 2,
+          "period": 4,
+          "subject": "Địa",
+          "teacher": "Hoa"
+        },
+        null,
+        null,
+        null
+      ],
+      [
+        {
+          "day": 3,
+          "period": 0,
+          "subject": "KHTN-SINH",
+          "teacher": "Vinh"
+        },
+        {
+          "day": 3,
+          "period": 1,
+          "subject": "Toán",
+          "teacher": "Đạt"
+        },
+        {
+          "day": 3,
+          "period": 2,
+          "subject": "Sử",
+          "teacher": "Hiếu"
+        },
+        {
+          "day": 3,
+          "period": 3,
+          "subject": "Ngữ văn",
+          "teacher": "Thảo"
+        },
+        {
+          "day": 3,
+          "period": 4,
+          "subject": "Âm nhạc",
+          "teacher": "L. Trung"
+        },
+        null,
+        null,
+        null
+      ],
+      [
+        {
+          "day": 4,
+          "period": 0,
+          "subject": "Ngữ văn",
+          "teacher": "Thảo"
+        },
+        {
+          "day": 4,
+          "period": 1,
+          "subject": "T Anh",
+          "teacher": "Huế"
+        },
+        {
+          "day": 4,
+          "period": 2,
+          "subject": "KHTN-LÍ",
+          "teacher": "Thực"
+        },
+        {
+          "day": 4,
+          "period": 3,
+          "subject": "KHTN-SINH",
+          "teacher": "Vinh"
+        },
+        {
+          "day": 4,
+          "period": 4,
+          "subject": "GDCD",
+          "teacher": "Hoan"
+        },
+        null,
+        null,
+        null
+      ]
+    ],
+    "7C": [
+      [
+        {
+          "day": 0,
+          "period": 0,
+          "subject": "KHTN-SINH",
+          "teacher": "Vinh"
+        },
+        {
+          "day": 0,
+          "period": 1,
+          "subject": "Ngữ văn",
+          "teacher": "Thảo"
+        },
+        {
+          "day": 0,
+          "period": 2,
+          "subject": "KHTN-LÍ",
+          "teacher": "Thực"
+        },
+        {
+          "day": 0,
+          "period": 3,
+          "subject": "Toán",
+          "teacher": "Trí"
+        },
+        null,
+        null,
+        null,
+        null
+      ],
+      [
+        {
+          "day": 1,
+          "period": 0,
+          "subject": "T Anh",
+          "teacher": "Huế"
+        },
+        {
+          "day": 1,
+          "period": 1,
+          "subject": "Ngữ văn",
+          "teacher": "Thảo"
+        },
+        {
+          "day": 1,
+          "period": 2,
+          "subject": "Toán",
+          "teacher": "Trí"
+        },
+        {
+          "day": 1,
+          "period": 3,
+          "subject": "GDCD",
+          "teacher": "Hoan"
+        },
+        null,
+        {
+          "day": 1,
+          "period": 5,
+          "subject": "GDTC",
+          "teacher": "Thiệu"
+        },
+        null,
+        null
+      ],
+      [
+        {
+          "day": 2,
+          "period": 0,
+          "subject": "Toán",
+          "teacher": "Trí"
+        },
+        {
+          "day": 2,
+          "period": 1,
+          "subject": "GDTC",
+          "teacher": "Thiệu"
+        },
+        {
+          "day": 2,
+          "period": 2,
+          "subject": "Âm nhạc",
+          "teacher": "L. Trung"
+        },
+        {
+          "day": 2,
+          "period": 3,
+          "subject": "T Anh",
+          "teacher": "Huế"
+        },
+        {
+          "day": 2,
+          "period": 4,
+          "subject": "Sử",
+          "teacher": "Hiếu"
+        },
+        null,
+        null,
+        null
+      ],
+      [
+        {
+          "day": 3,
+          "period": 0,
+          "subject": "Ngữ văn",
+          "teacher": "Thảo"
+        },
+        {
+          "day": 3,
+          "period": 1,
+          "subject": "T Anh",
+          "teacher": "Huế"
+        },
+        {
+          "day": 3,
+          "period": 2,
+          "subject": "KHTN-SINH",
+          "teacher": "Vinh"
+        },
+        {
+          "day": 3,
+          "period": 3,
+          "subject": "Mĩ thuật",
+          "teacher": "Nguyên"
+        },
+        {
+          "day": 3,
+          "period": 4,
+          "subject": "Địa",
+          "teacher": "Hoa"
+        },
+        null,
+        null,
+        null
+      ],
+      [
+        {
+          "day": 4,
+          "period": 0,
+          "subject": "Toán",
+          "teacher": "Trí"
+        },
+        {
+          "day": 4,
+          "period": 1,
+          "subject": "KHTN-SINH",
+          "teacher": "Vinh"
+        },
+        {
+          "day": 4,
+          "period": 2,
+          "subject": "Tin",
+          "teacher": "Đặng"
+        },
+        {
+          "day": 4,
+          "period": 3,
+          "subject": "Công nghệ",
+          "teacher": "Nguyên"
+        },
+        {
+          "day": 4,
+          "period": 4,
+          "subject": "Ngữ văn",
+          "teacher": "Thảo"
+        },
+        null,
+        null,
+        null
+      ]
+    ],
+    "8A": [
+      [
+        {
+          "day": 0,
+          "period": 0,
+          "subject": "Toán",
+          "teacher": "Trí"
+        },
+        {
+          "day": 0,
+          "period": 1,
+          "subject": "KHTN-LÍ",
+          "teacher": "Trí"
+        },
+        {
+          "day": 0,
+          "period": 2,
+          "subject": "GDCD",
+          "teacher": "Hoan"
+        },
+        {
+          "day": 0,
+          "period": 3,
+          "subject": "Tin",
+          "teacher": "Đặng"
+        },
+        null,
+        {
+          "day": 0,
+          "period": 5,
+          "subject": "Địa",
+          "teacher": "Hoa"
+        },
+        null,
+        null
+      ],
+      [
+        {
+          "day": 1,
+          "period": 0,
+          "subject": "T Anh",
+          "teacher": "Phương"
+        },
+        {
+          "day": 1,
+          "period": 1,
+          "subject": "Ngữ văn",
+          "teacher": "Lan"
+        },
+        {
+          "day": 1,
+          "period": 2,
+          "subject": "Sử",
+          "teacher": "Yến"
+        },
+        {
+          "day": 1,
+          "period": 3,
+          "subject": "KHTN-HÓA",
+          "teacher": "Sen"
+        },
+        null,
+        null,
+        null,
+        null
+      ],
+      [
+        {
+          "day": 2,
+          "period": 0,
+          "subject": "Ngữ văn",
+          "teacher": "Lan"
+        },
+        {
+          "day": 2,
+          "period": 1,
+          "subject": "Mĩ thuật",
+          "teacher": "Nguyên"
+        },
+        {
+          "day": 2,
+          "period": 2,
+          "subject": "T Anh",
+          "teacher": "Phương"
+        },
+        {
+          "day": 2,
+          "period": 3,
+          "subject": "Toán",
+          "teacher": "Trí"
+        },
+        null,
+        null,
+        null,
+        null
+      ],
+      [
+        {
+          "day": 3,
+          "period": 0,
+          "subject": "Ngữ văn",
+          "teacher": "Lan"
+        },
+        {
+          "day": 3,
+          "period": 1,
+          "subject": "Toán",
+          "teacher": "Trí"
+        },
+        {
+          "day": 3,
+          "period": 2,
+          "subject": "Âm nhạc",
+          "teacher": "L. Trung"
+        },
+        {
+          "day": 3,
+          "period": 3,
+          "subject": "KHTN-LÍ",
+          "teacher": "Trí"
+        },
+        {
+          "day": 3,
+          "period": 4,
+          "subject": "Sử",
+          "teacher": "Yến"
+        },
+        null,
+        null,
+        null
+      ],
+      [
+        {
+          "day": 4,
+          "period": 0,
+          "subject": "KHTN-HÓA",
+          "teacher": "Sen"
+        },
+        {
+          "day": 4,
+          "period": 1,
+          "subject": "Toán",
+          "teacher": "Trí"
+        },
+        {
+          "day": 4,
+          "period": 2,
+          "subject": "Công nghệ",
+          "teacher": "Dương"
+        },
+        {
+          "day": 4,
+          "period": 3,
+          "subject": "T Anh",
+          "teacher": "Phương"
+        },
+        {
+          "day": 4,
+          "period": 4,
+          "subject": "Ngữ văn",
+          "teacher": "Lan"
+        },
+        null,
+        null,
+        null
+      ]
+    ],
+    "8B": [
+      [
+        {
+          "day": 0,
+          "period": 0,
+          "subject": "Toán",
+          "teacher": "Thành"
+        },
+        {
+          "day": 0,
+          "period": 1,
+          "subject": "KHTN-HÓA",
+          "teacher": "Sen"
+        },
+        {
+          "day": 0,
+          "period": 2,
+          "subject": "T Anh",
+          "teacher": "Phương"
+        },
+        {
+          "day": 0,
+          "period": 3,
+          "subject": "Sử",
+          "teacher": "Yến"
+        },
+        null,
+        {
+          "day": 0,
+          "period": 5,
+          "subject": "Ngữ văn",
+          "teacher": "Hoan"
+        },
+        {
+          "day": 0,
+          "period": 6,
+          "subject": "Địa",
+          "teacher": "Hoa"
+        },
+        null
+      ],
+      [
+        {
+          "day": 1,
+          "period": 0,
+          "subject": "Ngữ văn",
+          "teacher": "Hoan"
+        },
+        {
+          "day": 1,
+          "period": 1,
+          "subject": "KHTN-LÍ",
+          "teacher": "Trí"
+        },
+        {
+          "day": 1,
+          "period": 2,
+          "subject": "Toán",
+          "teacher": "Thành"
+        },
+        {
+          "day": 1,
+          "period": 3,
+          "subject": "T Anh",
+          "teacher": "Phương"
+        },
+        null,
+        {
+          "day": 1,
+          "period": 5,
+          "subject": "Âm nhạc",
+          "teacher": "L. Trung"
+        },
+        {
+          "day": 1,
+          "period": 6,
+          "subject": "GDTC",
+          "teacher": "V. Chung"
+        },
+        null
+      ],
+      [
+        {
+          "day": 2,
+          "period": 0,
+          "subject": "Ngữ văn",
+          "teacher": "Hoan"
+        },
+        {
+          "day": 2,
+          "period": 1,
+          "subject": "Sử",
+          "teacher": "Yến"
+        },
+        {
+          "day": 2,
+          "period": 2,
+          "subject": "GDTC",
+          "teacher": "V. Chung"
+        },
+        {
+          "day": 2,
+          "period": 3,
+          "subject": "Công nghệ",
+          "teacher": "Dương"
+        },
+        {
+          "day": 2,
+          "period": 4,
+          "subject": "Toán",
+          "teacher": "Thành"
+        },
+        null,
+        null,
+        null
+      ],
+      [
+        {
+          "day": 3,
+          "period": 0,
+          "subject": "Toán",
+          "teacher": "Thành"
+        },
+        {
+          "day": 3,
+          "period": 1,
+          "subject": "GDTC",
+          "teacher": "Thiệu"
+        },
+        {
+          "day": 3,
+          "period": 2,
+          "subject": "GDCD",
+          "teacher": "Hoan"
+        },
+        {
+          "day": 3,
+          "period": 3,
+          "subject": "KHTN-HÓA",
+          "teacher": "Sen"
+        },
+        {
+          "day": 3,
+          "period": 4,
+          "subject": "KHTN-LÍ",
+          "teacher": "Trí"
+        },
+        null,
+        null,
+        null
+      ],
+      [
+        {
+          "day": 4,
+          "period": 0,
+          "subject": "Ngữ văn",
+          "teacher": "Hoan"
+        },
+        {
+          "day": 4,
+          "period": 1,
+          "subject": "T Anh",
+          "teacher": "Phương"
+        },
+        {
+          "day": 4,
+          "period": 2,
+          "subject": "GDTC",
+          "teacher": "Thiệu"
+        },
+        {
+          "day": 4,
+          "period": 3,
+          "subject": "Tin",
+          "teacher": "Đặng"
+        },
+        {
+          "day": 4,
+          "period": 4,
+          "subject": "Mĩ thuật",
+          "teacher": "Nguyên"
+        },
+        null,
+        null,
+        null
+      ]
+    ],
+    "8C": [
+      [
+        {
+          "day": 0,
+          "period": 0,
+          "subject": "Toán",
+          "teacher": "Dũng"
+        },
+        {
+          "day": 0,
+          "period": 1,
+          "subject": "Ngữ văn",
+          "teacher": "Hoan"
+        },
+        {
+          "day": 0,
+          "period": 2,
+          "subject": "KHTN-SINH",
+          "teacher": "Vinh"
+        },
+        {
+          "day": 0,
+          "period": 3,
+          "subject": "GDTC",
+          "teacher": "Thiệu"
+        },
+        null,
+        {
+          "day": 0,
+          "period": 5,
+          "subject": "Tin",
+          "teacher": "Đặng"
+        },
+        null,
+        null
+      ],
+      [
+        {
+          "day": 1,
+          "period": 0,
+          "subject": "Toán",
+          "teacher": "Dũng"
+        },
+        {
+          "day": 1,
+          "period": 1,
+          "subject": "Ngữ văn",
+          "teacher": "Hoan"
+        },
+        {
+          "day": 1,
+          "period": 2,
+          "subject": "T Anh",
+          "teacher": "Phương"
+        },
+        {
+          "day": 1,
+          "period": 3,
+          "subject": "Công nghệ",
+          "teacher": "Đạt"
+        },
+        null,
+        {
+          "day": 1,
+          "period": 5,
+          "subject": "GDCD",
+          "teacher": "Hoan"
+        },
+        null,
+        null
+      ],
+      [
+        {
+          "day": 2,
+          "period": 0,
+          "subject": "T Anh",
+          "teacher": "Phương"
+        },
+        {
+          "day": 2,
+          "period": 1,
+          "subject": "KHTN-LÍ",
+          "teacher": "Trí"
+        },
+        {
+          "day": 2,
+          "period": 2,
+          "subject": "Địa",
+          "teacher": "Hoa"
+        },
+        {
+          "day": 2,
+          "period": 3,
+          "subject": "Toán",
+          "teacher": "Dũng"
+        },
+        {
+          "day": 2,
+          "period": 4,
+          "subject": "KHTN-SINH",
+          "teacher": "Vinh"
+        },
+        null,
+        null,
+        null
+      ],
+      [
+        {
+          "day": 3,
+          "period": 0,
+          "subject": "Ngữ văn",
+          "teacher": "Hoan"
+        },
+        {
+          "day": 3,
+          "period": 1,
+          "subject": "Toán",
+          "teacher": "Dũng"
+        },
+        {
+          "day": 3,
+          "period": 2,
+          "subject": "Sử",
+          "teacher": "Yến"
+        },
+        {
+          "day": 3,
+          "period": 3,
+          "subject": "Âm nhạc",
+          "teacher": "L. Trung"
+        },
+        {
+          "day": 3,
+          "period": 4,
+          "subject": "Mĩ thuật",
+          "teacher": "Nguyên"
+        },
+        null,
+        null,
+        null
+      ],
+      [
+        {
+          "day": 4,
+          "period": 0,
+          "subject": "GDTC",
+          "teacher": "Thiệu"
+        },
+        {
+          "day": 4,
+          "period": 1,
+          "subject": "Sử",
+          "teacher": "Yến"
+        },
+        {
+          "day": 4,
+          "period": 2,
+          "subject": "Ngữ văn",
+          "teacher": "Hoan"
+        },
+        {
+          "day": 4,
+          "period": 3,
+          "subject": "KHTN-LÍ",
+          "teacher": "Trí"
+        },
+        {
+          "day": 4,
+          "period": 4,
+          "subject": "T Anh",
+          "teacher": "Phương"
+        },
+        null,
+        null,
+        null
+      ]
+    ],
+    "9A": [
+      [
+        {
+          "day": 0,
+          "period": 0,
+          "subject": "Ngữ văn",
+          "teacher": "Lan"
+        },
+        {
+          "day": 0,
+          "period": 1,
+          "subject": "GDCD",
+          "teacher": "Lan"
+        },
+        {
+          "day": 0,
+          "period": 2,
+          "subject": "Tin",
+          "teacher": "Đặng"
+        },
+        {
+          "day": 0,
+          "period": 3,
+          "subject": "T Anh",
+          "teacher": "Phương"
+        },
+        null,
+        {
+          "day": 0,
+          "period": 5,
+          "subject": "Toán",
+          "teacher": "Thành"
+        },
+        null,
+        null
+      ],
+      [
+        {
+          "day": 1,
+          "period": 0,
+          "subject": "Ngữ văn",
+          "teacher": "Lan"
+        },
+        {
+          "day": 1,
+          "period": 1,
+          "subject": "Toán",
+          "teacher": "Thành"
+        },
+        {
+          "day": 1,
+          "period": 2,
+          "subject": "GDTC",
+          "teacher": "V. Chung"
+        },
+        {
+          "day": 1,
+          "period": 3,
+          "subject": "Công nghệ",
+          "teacher": "Thảo"
+        },
+        null,
+        {
+          "day": 1,
+          "period": 5,
+          "subject": "KHTN-LÍ",
+          "teacher": "Dũng"
+        },
+        null,
+        null
+      ],
+      [
+        {
+          "day": 2,
+          "period": 0,
+          "subject": "Toán",
+          "teacher": "Thành"
+        },
+        {
+          "day": 2,
+          "period": 1,
+          "subject": "GDTC",
+          "teacher": "V. Chung"
+        },
+        {
+          "day": 2,
+          "period": 2,
+          "subject": "Ngữ văn",
+          "teacher": "Lan"
+        },
+        {
+          "day": 2,
+          "period": 3,
+          "subject": "Âm nhạc",
+          "teacher": "L. Trung"
+        },
+        {
+          "day": 2,
+          "period": 4,
+          "subject": "Mĩ thuật",
+          "teacher": "Nguyên"
+        },
+        null,
+        null,
+        null
+      ],
+      [
+        {
+          "day": 3,
+          "period": 0,
+          "subject": "KHTN-HÓA",
+          "teacher": "Sen"
+        },
+        {
+          "day": 3,
+          "period": 1,
+          "subject": "Ngữ văn",
+          "teacher": "Lan"
+        },
+        {
+          "day": 3,
+          "period": 2,
+          "subject": "Địa",
+          "teacher": "Hoa"
+        },
+        {
+          "day": 3,
+          "period": 3,
+          "subject": "T Anh",
+          "teacher": "Phương"
+        },
+        {
+          "day": 3,
+          "period": 4,
+          "subject": "Sử",
+          "teacher": "Hiếu"
+        },
+        null,
+        null,
+        null
+      ],
+      [
+        {
+          "day": 4,
+          "period": 0,
+          "subject": "Toán",
+          "teacher": "Thành"
+        },
+        {
+          "day": 4,
+          "period": 1,
+          "subject": "KHTN-LÍ",
+          "teacher": "Dũng"
+        },
+        {
+          "day": 4,
+          "period": 2,
+          "subject": "T Anh",
+          "teacher": "Phương"
+        },
+        {
+          "day": 4,
+          "period": 3,
+          "subject": "KHTN-HÓA",
+          "teacher": "Sen"
+        },
+        null,
+        null,
+        null,
+        null
+      ]
+    ],
+    "9B": [
+      [
+        {
+          "day": 0,
+          "period": 0,
+          "subject": "Toán",
+          "teacher": "Thực"
+        },
+        {
+          "day": 0,
+          "period": 1,
+          "subject": "KHTN-LÍ",
+          "teacher": "Dũng"
+        },
+        {
+          "day": 0,
+          "period": 2,
+          "subject": "T Anh",
+          "teacher": "Huế"
+        },
+        {
+          "day": 0,
+          "period": 3,
+          "subject": "GDCD",
+          "teacher": "Lan"
+        },
+        null,
+        null,
+        null,
+        null
+      ],
+      [
+        {
+          "day": 1,
+          "period": 0,
+          "subject": "Toán",
+          "teacher": "Thực"
+        },
+        {
+          "day": 1,
+          "period": 1,
+          "subject": "Ngữ văn",
+          "teacher": "Ngơi"
+        },
+        {
+          "day": 1,
+          "period": 2,
+          "subject": "KHTN-HÓA",
+          "teacher": "Sen"
+        },
+        {
+          "day": 1,
+          "period": 3,
+          "subject": "Địa",
+          "teacher": "Hoa"
+        },
+        null,
+        {
+          "day": 1,
+          "period": 5,
+          "subject": "Mĩ thuật",
+          "teacher": "Nguyên"
+        },
+        {
+          "day": 1,
+          "period": 6,
+          "subject": "KHTN-LÍ",
+          "teacher": "Dũng"
+        },
+        null
+      ],
+      [
+        {
+          "day": 2,
+          "period": 0,
+          "subject": "T Anh",
+          "teacher": "Huế"
+        },
+        {
+          "day": 2,
+          "period": 1,
+          "subject": "KHTN-HÓA",
+          "teacher": "Sen"
+        },
+        {
+          "day": 2,
+          "period": 2,
+          "subject": "Sử",
+          "teacher": "Hiếu"
+        },
+        {
+          "day": 2,
+          "period": 3,
+          "subject": "Ngữ văn",
+          "teacher": "Ngơi"
+        },
+        {
+          "day": 2,
+          "period": 4,
+          "subject": "Toán",
+          "teacher": "Thực"
+        },
+        null,
+        null,
+        null
+      ],
+      [
+        {
+          "day": 3,
+          "period": 0,
+          "subject": "Ngữ văn",
+          "teacher": "Ngơi"
+        },
+        {
+          "day": 3,
+          "period": 1,
+          "subject": "Toán",
+          "teacher": "Thực"
+        },
+        {
+          "day": 3,
+          "period": 2,
+          "subject": "GDTC",
+          "teacher": "V. Chung"
+        },
+        {
+          "day": 3,
+          "period": 3,
+          "subject": "Tin",
+          "teacher": "Đặng"
+        },
+        null,
+        null,
+        null,
+        null
+      ],
+      [
+        {
+          "day": 4,
+          "period": 0,
+          "subject": "GDTC",
+          "teacher": "V. Chung"
+        },
+        {
+          "day": 4,
+          "period": 1,
+          "subject": "Ngữ văn",
+          "teacher": "Ngơi"
+        },
+        {
+          "day": 4,
+          "period": 2,
+          "subject": "T Anh",
+          "teacher": "Huế"
+        },
+        {
+          "day": 4,
+          "period": 3,
+          "subject": "Công nghệ",
+          "teacher": "L. Trung"
+        },
+        {
+          "day": 4,
+          "period": 4,
+          "subject": "Âm nhạc",
+          "teacher": "L. Trung"
+        },
+        null,
+        null,
+        null
+      ]
+    ]
+  },
+  "unassigned": []
+}

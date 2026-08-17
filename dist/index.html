@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f766e" />
+    <meta name="description" content="Phần mềm xếp thời khóa biểu tự động thông minh dành cho các trường học, hỗ trợ chạy ngoại tuyến 100%." />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="manifest" href="./manifest.json" />
+    <title>Smart Scheduler Pro</title>
+    <!-- Built Standalone Tailwind CSS stylesheet (100% Offline, no CDN needed) -->
+    <!-- SheetJS styled for Excel Export (Local Offline) -->
+    <script src="./vendor/xlsx.bundle.js"></script>
+    <script type="module" crossorigin src="./assets/index-C5vZcuH0.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-l8cp2uux.css">
+  </head>
+  <body class="bg-gray-50 text-gray-900">
+    <div id="root"></div>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js')
+            .then((reg) => console.log('[Service Worker] Registered successfully with scope:', reg.scope))
+            .catch((err) => console.error('[Service Worker] Registration failed:', err));
+        });
+      }
+    </script>
+  </body>
+</html>
