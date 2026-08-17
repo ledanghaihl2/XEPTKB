@@ -13,6 +13,17 @@ import Reports from './components/Reports';
 import ConstraintsEditor from './components/ConstraintsEditor';
 import AddAssignmentModal from './components/AddAssignmentModal';
 import { VersionManagerModal } from './components/VersionManagerModal';
+import { SupabaseConfigModal } from './components/SupabaseConfigModal';
+import { isSupabaseConfigured } from './services/supabaseClient';
+import {
+  fetchAssignmentsSupabase,
+  saveAssignmentsSupabase,
+  fetchConstraintsSupabase,
+  saveConstraintsSupabase,
+  fetchVersionsSupabase,
+  saveVersionSupabase,
+  deleteVersionSupabase
+} from './services/supabaseService';
 
 // Icons
 const IconTable = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3h18v18H3zM21 9H3M21 15H3M12 3v18"/></svg>;
@@ -74,13 +85,42 @@ function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showVersionModal, setShowVersionModal] = useState(false);
+  const [showSupabaseModal, setShowSupabaseModal] = useState(false);
+  const [isHasSupabase, setIsHasSupabase] = useState<boolean>(() => isSupabaseConfigured());
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-save state to LocalStorage
+  // Auto-sync state with Supabase Cloud DB on mount if configured
+  useEffect(() => {
+    const syncFromSupabase = async () => {
+      if (!isSupabaseConfigured()) return;
+      console.log('⚡ Đang đồng bộ dữ liệu từ Supabase Cloud Database...');
+      const cloudAssignments = await fetchAssignmentsSupabase();
+      if (cloudAssignments && cloudAssignments.length > 0) {
+        setData(cloudAssignments);
+      }
+
+      const cloudConstraints = await fetchConstraintsSupabase();
+      if (cloudConstraints) {
+        setConstraints(cloudConstraints);
+      }
+
+      const cloudVersions = await fetchVersionsSupabase();
+      if (cloudVersions) {
+        setVersions(cloudVersions);
+      }
+    };
+
+    syncFromSupabase();
+  }, [isHasSupabase]);
+
+  // Auto-save state to LocalStorage & Supabase DB
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY_DATA, JSON.stringify(data));
+      if (isSupabaseConfigured()) {
+        saveAssignmentsSupabase(data);
+      }
     } catch (err) {
       console.warn('Lỗi khi lưu dữ liệu phân công:', err);
     }
@@ -89,6 +129,9 @@ function App() {
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY_CONSTRAINTS, JSON.stringify(constraints));
+      if (isSupabaseConfigured()) {
+        saveConstraintsSupabase(constraints);
+      }
     } catch (err) {
       console.warn('Lỗi khi lưu dữ liệu ràng buộc:', err);
     }
@@ -125,7 +168,10 @@ function App() {
     };
     const updated = [newVer, ...versions];
     setVersions(updated);
-    alert(`Đã lưu thành công phiên bản "${name}" vào LocalStorage!`);
+    if (isSupabaseConfigured()) {
+      saveVersionSupabase(newVer);
+    }
+    alert(`Đã lưu thành công phiên bản "${name}" vào ${isSupabaseConfigured() ? 'Supabase Database & LocalStorage' : 'LocalStorage'}!`);
   };
 
   const handleLoadVersion = (version: TimetableVersion) => {
@@ -138,6 +184,9 @@ function App() {
 
   const handleDeleteVersion = (id: string) => {
     setVersions(prev => prev.filter(v => v.id !== id));
+    if (isSupabaseConfigured()) {
+      deleteVersionSupabase(id);
+    }
   };
 
   const handleRenameVersion = (id: string, newName: string) => {
@@ -284,12 +333,26 @@ function App() {
                     Ngoại tuyến (Sẵn sàng)
                   </span>
                 )}
+                {isHasSupabase && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-teal-400/20 text-teal-200 border border-teal-300/30" title="Đã kết nối Supabase Cloud Database">
+                    ⚡ Supabase DB
+                  </span>
+                )}
               </div>
-              <p className="text-xs text-blue-100 opacity-80">Hệ thống xếp thời khóa biểu thông minh (Offline PWA ready)</p>
+              <p className="text-xs text-blue-100 opacity-80">Hệ thống xếp thời khóa biểu thông minh (Supabase Cloud + Offline PWA)</p>
             </div>
           </div>
           
           <div className="flex items-center gap-2 flex-wrap justify-center">
+             <button 
+              onClick={() => setShowSupabaseModal(true)}
+              className="flex items-center gap-1.5 px-3 py-2 bg-emerald-800 hover:bg-emerald-900 border border-emerald-500/30 text-emerald-100 rounded shadow transition-colors text-sm font-medium"
+              title="Cấu hình thông số kết nối Supabase Database"
+            >
+              <svg className="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="currentColor"><path d="M11.5 2L2 13.5h9L9.5 22 19 10.5h-9L11.5 2z"/></svg>
+              Cấu hình Supabase
+            </button>
+
              <button 
               onClick={() => setShowVersionModal(true)}
               className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded shadow transition-colors text-sm font-medium"
@@ -580,6 +643,12 @@ function App() {
         currentData={data}
         currentConstraints={constraints}
         currentSchedule={schedule}
+      />
+
+      <SupabaseConfigModal
+        isOpen={showSupabaseModal}
+        onClose={() => setShowSupabaseModal(false)}
+        onConnectedSuccess={() => setIsHasSupabase(isSupabaseConfigured())}
       />
     </div>
   );
