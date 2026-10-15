@@ -92,6 +92,12 @@ function App() {
   const [isHasSupabase, setIsHasSupabase] = useState<boolean>(() => isSupabaseConfigured());
   const [isHasGemini, setIsHasGemini] = useState<boolean>(() => isGeminiConfigured());
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [optimizationMetrics, setOptimizationMetrics] = useState<{
+    teacherGaps: number;
+    initialGaps?: number;
+    studentGaps: number;
+    optimizationTimeMs: number;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleApplyParsedData = (newAssignments: InputRow[], newConstraints: Constraint[]) => {
@@ -244,6 +250,9 @@ function App() {
       const result: ScheduleResult = generateSchedule(currentData, constraints);
       setSchedule(result.timetable);
       setUnassigned(result.unassigned);
+      if (result.metrics) {
+        setOptimizationMetrics(result.metrics);
+      }
       setIsGenerating(false);
       
       // Auto switch to schedule tab if on settings
@@ -639,6 +648,28 @@ function App() {
         <div className="animate-fade-in">
           {activeTab === 'schedule' && (
             <div id="print-schedule">
+              {optimizationMetrics && (
+                <div className="mb-4 bg-gradient-to-r from-teal-50 via-emerald-50 to-blue-50 border border-teal-200/90 rounded-lg p-3.5 px-4 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-2.5 text-xs text-teal-900 print:hidden animate-fade-in">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="flex items-center justify-center w-6 h-6 rounded-full bg-teal-600 text-white font-bold text-xs shadow-sm">
+                      ⚡
+                    </span>
+                    <span className="font-bold text-sm text-teal-950">Thời khóa biểu đã được tối ưu hóa toàn diện:</span>
+                    <span className="bg-teal-100/90 text-teal-800 px-2.5 py-0.5 rounded-full font-semibold border border-teal-200/80">
+                      Tiết trống giáo viên: {optimizationMetrics.initialGaps ?? 'N/A'} ➔ {optimizationMetrics.teacherGaps} tiết
+                    </span>
+                    <span className="bg-emerald-100/90 text-emerald-800 px-2.5 py-0.5 rounded-full font-semibold border border-emerald-200/80">
+                      Tiết lủng học sinh: {optimizationMetrics.studentGaps}
+                    </span>
+                    <span className="bg-blue-100/90 text-blue-800 px-2.5 py-0.5 rounded-full font-semibold border border-blue-200/80">
+                      Ưu tiên môn chính buổi sáng & ghép tiết đôi
+                    </span>
+                  </div>
+                  <span className="text-gray-500 italic whitespace-nowrap text-[11px]">
+                    Hoàn tất trong {optimizationMetrics.optimizationTimeMs}ms
+                  </span>
+                </div>
+              )}
               <TimetableGridDisplay 
                 data={schedule} 
                 onEditCell={(className, day, period, subject, teacher) => {

@@ -21,6 +21,12 @@ export interface ScheduleResult {
   timetable: TimetableGrid;
   unassigned: InputRow[];
   success: boolean;
+  metrics?: {
+    teacherGaps: number;
+    initialGaps?: number;
+    studentGaps: number;
+    optimizationTimeMs: number;
+  };
 }
 
 export enum ReportType {
