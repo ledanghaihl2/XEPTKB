@@ -1,13 +1,26 @@
 import React, { useState } from 'react';
-import { TimetableGrid, ClassSession } from '../types';
-import { DAYS, PERIODS, CLASSES, isValidSlot } from '../constants';
+import { TimetableGrid, ClassSession, ShiftType } from '../types';
+import { DAYS, PERIODS, CLASSES, isValidSlot, SHIFT_OPTIONS, isPeriodInShift } from '../constants';
 
 interface Props {
   data: TimetableGrid;
   onEditCell?: (className: string, day: number, period: number, subject: string, teacher: string) => void;
+  shift?: ShiftType;
+  onShiftChange?: (shift: ShiftType) => void;
 }
 
-const TimetableGridDisplay: React.FC<Props> = ({ data, onEditCell }) => {
+const TimetableGridDisplay: React.FC<Props> = ({ data, onEditCell, shift, onShiftChange }) => {
+  const [internalShift, setInternalShift] = useState<ShiftType>('ALL');
+  const currentShift = shift ?? internalShift;
+
+  const handleShiftSelect = (s: ShiftType) => {
+    if (onShiftChange) {
+      onShiftChange(s);
+    } else {
+      setInternalShift(s);
+    }
+  };
+
   const [editingCell, setEditingCell] = useState<{cls: string, dayIdx: number, periodIdx: number} | null>(null);
   const [editSubject, setEditSubject] = useState("");
   const [editTeacher, setEditTeacher] = useState("");
@@ -29,7 +42,41 @@ const TimetableGridDisplay: React.FC<Props> = ({ data, onEditCell }) => {
 
   return (
     <div className="overflow-x-auto bg-white shadow rounded-lg p-4 relative">
-      <h2 className="text-xl font-bold mb-4 text-center uppercase text-primary">Thời khóa biểu tổng hợp các lớp</h2>
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-4 border-b pb-3">
+        <h2 className="text-xl font-bold uppercase text-primary text-center sm:text-left">
+          Thời khóa biểu tổng hợp các lớp
+          {currentShift === 'MORNING' && <span className="text-sm font-normal text-teal-700 ml-2">(Buổi Sáng)</span>}
+          {currentShift === 'AFTERNOON' && <span className="text-sm font-normal text-amber-700 ml-2">(Buổi Chiều)</span>}
+        </h2>
+
+        {/* Bộ chọn buổi học (Shift Switcher) */}
+        <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg border border-gray-200 print:hidden shadow-sm">
+          <span className="text-xs font-semibold text-gray-500 px-2 flex items-center gap-1">
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+            Buổi học:
+          </span>
+          {SHIFT_OPTIONS.map(opt => {
+            const active = currentShift === opt.id;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => handleShiftSelect(opt.id)}
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1.5 ${
+                  active 
+                    ? 'bg-primary text-white shadow font-bold' 
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-white/80'
+                }`}
+                title={opt.description}
+              >
+                <span>{opt.icon}</span>
+                <span>{opt.shortLabel}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="border border-gray-300 min-w-[1200px]">
         <div className="grid grid-cols-[80px_100px_repeat(11,minmax(80px,1fr))] divide-x divide-gray-300 bg-primary text-white sticky top-0 z-10">
           <div className="font-bold p-2 text-center flex items-center justify-center">Thứ</div>
@@ -39,34 +86,41 @@ const TimetableGridDisplay: React.FC<Props> = ({ data, onEditCell }) => {
           ))}
         </div>
 
-        {DAYS.map((day, dayIdx) => (
-          <React.Fragment key={day}>
-            {PERIODS.map((period, periodIdx) => {
-               const isValid = isValidSlot(dayIdx, periodIdx);
-               if (!isValid) return null; // Or render as completely blocked out row, but skipping is cleaner if the whole period across all classes is invalid
+        {DAYS.map((day, dayIdx) => {
+          // Lọc các tiết hợp lệ trong ngày thỏa mãn ca/buổi học đang chọn
+          const validPeriodsInDay = PERIODS.map((_, p) => p).filter(
+            p => isValidSlot(dayIdx, p) && isPeriodInShift(p, currentShift)
+          );
+          if (validPeriodsInDay.length === 0) return null;
 
-               // actually, isValid is based on day and period, not class. 
-               // So if it's invalid for this day/period, we can just skip rendering the row for this day!
-               // Wait, isValidSlot is identical for all classes!
-               
-               const isDayEnd = Math.max(...PERIODS.map((_, i) => isValidSlot(dayIdx, i) ? i : -1)) === periodIdx;
+          const firstPeriodInDay = validPeriodsInDay[0];
+          const lastPeriodInDay = validPeriodsInDay[validPeriodsInDay.length - 1];
 
-               return (
+          return (
+            <React.Fragment key={day}>
+              {validPeriodsInDay.map((periodIdx) => {
+                const period = PERIODS[periodIdx];
+                const isDayEnd = periodIdx === lastPeriodInDay;
+                const isDayStart = periodIdx === firstPeriodInDay;
+
+                return (
                   <div key={`${day}-${period}`} className={`grid grid-cols-[80px_100px_repeat(11,minmax(80px,1fr))] divide-x divide-gray-300 ${isDayEnd ? 'border-b-4 border-gray-800' : (periodIdx === 4 || periodIdx === 7 ? 'border-b-4 border-gray-400' : 'border-b border-gray-200')}`}>
                     
                     {/* Day Column */}
-                    {periodIdx === 0 ? (
-                        <div className="p-2 flex items-center justify-center font-bold bg-gray-100 border-r text-sm">
-                            {day}
-                        </div>
-                    ) : periodIdx === 5 ? (
-                        <div className="p-2 flex items-center justify-center font-bold bg-gray-100 border-r text-sm">
-                            {day} <br/>(Chiều)
-                        </div>
+                    {isDayStart ? (
+                      <div className="p-2 flex items-center justify-center font-bold bg-gray-100 border-r text-sm">
+                        {day}
+                        {currentShift === 'AFTERNOON' && (
+                          <>
+                            <br />
+                            <span className="text-[11px] font-normal text-gray-500">(Chiều)</span>
+                          </>
+                        )}
+                      </div>
                     ) : (
-                        <div className="p-2 flex items-center justify-center bg-gray-50 border-r text-transparent text-xs">
-                          {day}
-                        </div>
+                      <div className="p-2 flex items-center justify-center bg-gray-50 border-r text-transparent text-xs select-none">
+                        {day}
+                      </div>
                     )}
 
                     <div className="p-2 flex items-center justify-center font-medium text-gray-600 bg-gray-50 text-center text-sm">
@@ -93,10 +147,11 @@ const TimetableGridDisplay: React.FC<Props> = ({ data, onEditCell }) => {
                       );
                     })}
                   </div>
-               );
-            })}
-          </React.Fragment>
-        ))}
+                );
+              })}
+            </React.Fragment>
+          );
+        })}
       </div>
 
       {/* Edit Modal */}

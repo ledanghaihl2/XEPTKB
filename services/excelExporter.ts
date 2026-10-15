@@ -1,7 +1,7 @@
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
-import { TimetableGrid, InputRow } from '../types';
-import { CLASSES, DAYS, PERIODS, isValidSlot } from '../constants';
+import { TimetableGrid, InputRow, ShiftType } from '../types';
+import { CLASSES, DAYS, PERIODS, isValidSlot, isPeriodInShift } from '../constants';
 import { validateOpenXmlArchive } from './openXmlValidator';
 
 // Declare XLSX globally as it is loaded via script tag
@@ -11,7 +11,11 @@ declare global {
   }
 }
 
-export const exportScheduleToExcel = async (schedule: TimetableGrid, rawData: InputRow[]) => {
+export const exportScheduleToExcel = async (
+  schedule: TimetableGrid, 
+  rawData: InputRow[], 
+  selectedShift: ShiftType = 'ALL'
+) => {
   try {
     if (!(window as any).XLSX) {
       alert('Thư viện xuất Excel chưa sẵn sàng. Vui lòng thử lại sau giây lát.');
@@ -73,10 +77,11 @@ export const exportScheduleToExcel = async (schedule: TimetableGrid, rawData: In
   DAYS.forEach((day, dIdx) => {
     slotRowMap[dIdx] = {};
     let dayPrinted = false;
-    let validPeriodsCount = PERIODS.filter((_, pIdx) => isValidSlot(dIdx, pIdx)).length;
+    let validPeriodsCount = PERIODS.filter((_, pIdx) => isValidSlot(dIdx, pIdx) && isPeriodInShift(pIdx, selectedShift)).length;
     let periodsPrinted = 0;
 
     PERIODS.forEach((period, pIdx) => {
+      if (!isPeriodInShift(pIdx, selectedShift)) return;
       if (!isValidSlot(dIdx, pIdx)) return;
 
       const row: (string | number)[] = [!dayPrinted ? day : '', period];
@@ -149,6 +154,7 @@ export const exportScheduleToExcel = async (schedule: TimetableGrid, rawData: In
     wsDataTKB_Teacher.push(['Tiết / Thứ', ...DAYS]);
     
     PERIODS.forEach((period, pIdx) => {
+      if (!isPeriodInShift(pIdx, selectedShift)) return;
       const row: any[] = [period];
       DAYS.forEach((day, dIdx) => {
         if (!isValidSlot(dIdx, pIdx)) {
@@ -499,7 +505,8 @@ export const exportScheduleToExcel = async (schedule: TimetableGrid, rawData: In
   XLSX.utils.book_append_sheet(wb, wsDropdown, "Danh Mục Chọn");
 
   // --- XUẤT FILE EXCEL VỚI ĐỊNH DẠNG TÔ MÀU CẢNH BÁO TRÙNG LỊCH & DANH SÁCH CHỌN THẢ XUỐNG (DROPDOWN) ---
-  const fileName = "ThoiKhoaBieu-tuan-1-2025.xlsx";
+  const shiftSuffix = selectedShift === 'MORNING' ? '-BuoiSang' : selectedShift === 'AFTERNOON' ? '-BuoiChieu' : '';
+  const fileName = `ThoiKhoaBieu-tuan-1-2025${shiftSuffix}.xlsx`;
 
   try {
     // 1. Tạo buffer file Excel dạng binary array từ XLSX

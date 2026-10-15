@@ -1,13 +1,25 @@
 import React, { useMemo, useState } from 'react';
-import { TimetableGrid } from '../types';
-import { DAYS, PERIODS, CLASSES, isValidSlot } from '../constants';
+import { TimetableGrid, ShiftType } from '../types';
+import { DAYS, PERIODS, CLASSES, isValidSlot, SHIFT_OPTIONS, isPeriodInShift } from '../constants';
 
 interface Props {
   schedule: TimetableGrid;
+  shift?: ShiftType;
+  onShiftChange?: (shift: ShiftType) => void;
 }
 
-const TeacherTimetable: React.FC<Props> = ({ schedule }) => {
+const TeacherTimetable: React.FC<Props> = ({ schedule, shift, onShiftChange }) => {
   const [selectedTeacher, setSelectedTeacher] = useState<string>('Tất cả');
+  const [internalShift, setInternalShift] = useState<ShiftType>('ALL');
+  const currentShift = shift ?? internalShift;
+
+  const handleShiftSelect = (s: ShiftType) => {
+    if (onShiftChange) {
+      onShiftChange(s);
+    } else {
+      setInternalShift(s);
+    }
+  };
 
   // Trích xuất danh sách giáo viên duy nhất từ thời khóa biểu (đã trim và chuẩn hóa)
   const allTeachers = useMemo(() => {
@@ -33,20 +45,50 @@ const TeacherTimetable: React.FC<Props> = ({ schedule }) => {
 
   return (
     <div className="space-y-8">
-      <div className="bg-white shadow rounded-lg p-4 flex items-center justify-between print:hidden">
+      <div className="bg-white shadow rounded-lg p-4 flex flex-col md:flex-row items-center justify-between gap-4 print:hidden">
         <h2 className="text-xl font-bold text-primary">TKB GIÁO VIÊN</h2>
-        <div>
-          <label className="mr-2 font-medium text-gray-700">Chọn giáo viên:</label>
-          <select 
-            className="border border-gray-300 rounded px-3 py-1.5 focus:outline-none focus:border-primary"
-            value={selectedTeacher}
-            onChange={(e) => setSelectedTeacher(e.target.value)}
-          >
-            <option value="Tất cả">-- Tất cả giáo viên --</option>
-            {allTeachers.map(t => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
+        
+        <div className="flex items-center gap-4 flex-wrap justify-center">
+          {/* Bộ chọn buổi học */}
+          <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg border border-gray-200 shadow-sm">
+            <span className="text-xs font-semibold text-gray-500 px-2 flex items-center gap-1">
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+              Buổi:
+            </span>
+            {SHIFT_OPTIONS.map(opt => {
+              const active = currentShift === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => handleShiftSelect(opt.id)}
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition-all flex items-center gap-1 ${
+                    active 
+                      ? 'bg-primary text-white shadow font-bold' 
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-white/80'
+                  }`}
+                  title={opt.description}
+                >
+                  <span>{opt.icon}</span>
+                  <span>{opt.shortLabel}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center">
+            <label className="mr-2 font-medium text-gray-700 text-sm">Chọn giáo viên:</label>
+            <select 
+              className="border border-gray-300 rounded px-3 py-1.5 focus:outline-none focus:border-primary text-sm font-medium shadow-sm"
+              value={selectedTeacher}
+              onChange={(e) => setSelectedTeacher(e.target.value)}
+            >
+              <option value="Tất cả">-- Tất cả giáo viên --</option>
+              {allTeachers.map(t => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -58,7 +100,11 @@ const TeacherTimetable: React.FC<Props> = ({ schedule }) => {
 
       {displayTeachers.map(teacher => (
         <div key={teacher} className="bg-white shadow rounded-lg p-6 overflow-x-auto page-break-after">
-          <h3 className="text-lg font-bold mb-4 text-center text-primary border-b pb-2">GIÁO VIÊN: {teacher}</h3>
+          <h3 className="text-lg font-bold mb-4 text-center text-primary border-b pb-2">
+            GIÁO VIÊN: {teacher}
+            {currentShift === 'MORNING' && <span className="text-sm font-normal text-teal-700 ml-2">(Buổi Sáng)</span>}
+            {currentShift === 'AFTERNOON' && <span className="text-sm font-normal text-amber-700 ml-2">(Buổi Chiều)</span>}
+          </h3>
           <div className="border border-gray-300 min-w-[600px]">
              <div className="grid grid-cols-[100px_repeat(5,minmax(100px,1fr))] divide-x divide-gray-300">
                <div className="bg-primary text-white font-bold p-2 text-center flex items-center justify-center">Tiết</div>
@@ -68,7 +114,7 @@ const TeacherTimetable: React.FC<Props> = ({ schedule }) => {
              </div>
              
              {PERIODS.map((period, pIdx) => {
-               // Only render the row if at least one day has this period as valid
+               if (!isPeriodInShift(pIdx, currentShift)) return null;
                const isRowValid = DAYS.some((_, dIdx) => isValidSlot(dIdx, pIdx));
                if (!isRowValid) return null;
 

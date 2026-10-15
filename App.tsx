@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
-import { InputRow, TimetableGrid, ScheduleResult, Constraint, TimetableVersion } from './types';
-import { SAMPLE_DATA } from './constants';
+import { InputRow, TimetableGrid, ScheduleResult, Constraint, TimetableVersion, ShiftType } from './types';
+import { SAMPLE_DATA, SHIFT_OPTIONS } from './constants';
 import { generateSchedule } from './services/schedulerEngine';
 import { exportScheduleToExcel } from './services/excelExporter';
 import { parseExcelData } from './services/excelImporter';
@@ -45,6 +45,7 @@ const STORAGE_KEY_VERSIONS = 'scheduler_saved_versions';
 
 function App() {
   const [activeTab, setActiveTab] = useState<'schedule' | 'class_schedule' | 'teacher_schedule' | 'reports' | 'constraints'>('schedule');
+  const [selectedShift, setSelectedShift] = useState<ShiftType>('ALL');
   
   // Load data from LocalStorage if present
   const [data, setData] = useState<InputRow[]>(() => {
@@ -297,7 +298,7 @@ function App() {
   };
 
   const handleExportExcel = () => {
-    exportScheduleToExcel(schedule, data);
+    exportScheduleToExcel(schedule, data, selectedShift);
   };
 
   const handleImportClick = () => {
@@ -541,9 +542,10 @@ function App() {
             <button 
               onClick={handleExportExcel}
               className="flex items-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded shadow transition-colors text-sm font-medium"
+              title={`Xuất file Excel TKB ${selectedShift === 'MORNING' ? '(Buổi Sáng)' : selectedShift === 'AFTERNOON' ? '(Buổi Chiều)' : '(Cả ngày)'}`}
             >
               <IconExcel />
-              Xuất Excel
+              Xuất Excel {selectedShift === 'MORNING' ? '(Sáng)' : selectedShift === 'AFTERNOON' ? '(Chiều)' : ''}
             </button>
             <button 
               onClick={handlePrint}
@@ -585,63 +587,93 @@ function App() {
           </div>
         )}
 
-        {/* Tabs */}
-        <div className="flex border-b border-gray-200 mb-6 print:hidden">
-          <button
-            onClick={() => setActiveTab('schedule')}
-            className={`flex items-center gap-2 py-4 px-6 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === 'schedule'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            <IconTable />
-            TKB Tổng hợp
-          </button>
-          <button
-            onClick={() => setActiveTab('class_schedule')}
-            className={`flex items-center gap-2 py-4 px-6 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === 'class_schedule'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            <IconTable />
-            TKB Từng lớp
-          </button>
-          <button
-            onClick={() => setActiveTab('teacher_schedule')}
-            className={`flex items-center gap-2 py-4 px-6 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === 'teacher_schedule'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            <IconTable />
-            TKB Giáo viên
-          </button>
-          <button
-            onClick={() => setActiveTab('reports')}
-            className={`flex items-center gap-2 py-4 px-6 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === 'reports'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            <IconReport />
-            Báo cáo Tổng hợp
-          </button>
-          <button
-            onClick={() => setActiveTab('constraints')}
-            className={`flex items-center gap-2 py-4 px-6 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === 'constraints'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            <IconSettings />
-            Cấu hình ràng buộc
-          </button>
+        {/* Tabs & Bộ chọn buổi học (Shift Switcher) */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-gray-200 mb-6 print:hidden gap-3">
+          <div className="flex overflow-x-auto">
+            <button
+              onClick={() => setActiveTab('schedule')}
+              className={`flex items-center gap-2 py-4 px-6 border-b-2 font-medium text-sm transition-colors whitespace-nowrap ${
+                activeTab === 'schedule'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <IconTable />
+              TKB Tổng hợp
+            </button>
+            <button
+              onClick={() => setActiveTab('class_schedule')}
+              className={`flex items-center gap-2 py-4 px-6 border-b-2 font-medium text-sm transition-colors whitespace-nowrap ${
+                activeTab === 'class_schedule'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <IconTable />
+              TKB Từng lớp
+            </button>
+            <button
+              onClick={() => setActiveTab('teacher_schedule')}
+              className={`flex items-center gap-2 py-4 px-6 border-b-2 font-medium text-sm transition-colors whitespace-nowrap ${
+                activeTab === 'teacher_schedule'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <IconTable />
+              TKB Giáo viên
+            </button>
+            <button
+              onClick={() => setActiveTab('reports')}
+              className={`flex items-center gap-2 py-4 px-6 border-b-2 font-medium text-sm transition-colors whitespace-nowrap ${
+                activeTab === 'reports'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <IconReport />
+              Báo cáo Tổng hợp
+            </button>
+            <button
+              onClick={() => setActiveTab('constraints')}
+              className={`flex items-center gap-2 py-4 px-6 border-b-2 font-medium text-sm transition-colors whitespace-nowrap ${
+                activeTab === 'constraints'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <IconSettings />
+              Cấu hình ràng buộc
+            </button>
+          </div>
+
+          {/* Bộ lọc buổi học nhanh (Áp dụng đồng bộ cho các chế độ xem TKB) */}
+          {(activeTab === 'schedule' || activeTab === 'class_schedule' || activeTab === 'teacher_schedule') && (
+            <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-gray-200 shadow-sm self-start md:self-center mb-2 md:mb-0">
+              <span className="text-xs font-semibold text-gray-500 px-2 flex items-center gap-1">
+                <svg className="w-3.5 h-3.5 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                Buổi học:
+              </span>
+              {SHIFT_OPTIONS.map(opt => {
+                const active = selectedShift === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    onClick={() => setSelectedShift(opt.id)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all flex items-center gap-1.5 ${
+                      active
+                        ? 'bg-primary text-white shadow-sm font-bold scale-[1.02]'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                    }`}
+                    title={opt.description}
+                  >
+                    <span>{opt.icon}</span>
+                    <span>{opt.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Views */}
@@ -672,6 +704,8 @@ function App() {
               )}
               <TimetableGridDisplay 
                 data={schedule} 
+                shift={selectedShift}
+                onShiftChange={setSelectedShift}
                 onEditCell={(className, day, period, subject, teacher) => {
                   setSchedule(prev => {
                     const newSchedule = { ...prev };
@@ -697,7 +731,11 @@ function App() {
 
           {activeTab === 'teacher_schedule' && (
             <div id="print-teacher-schedule">
-              <TeacherTimetable schedule={schedule} />
+              <TeacherTimetable 
+                schedule={schedule} 
+                shift={selectedShift}
+                onShiftChange={setSelectedShift}
+              />
             </div>
           )}
 
@@ -705,6 +743,8 @@ function App() {
             <div id="print-class-schedule">
               <ClassTimetable 
                 schedule={schedule} 
+                shift={selectedShift}
+                onShiftChange={setSelectedShift}
                 onEditCell={(className, day, period, subject, teacher) => {
                   setSchedule(prev => {
                     const newSchedule = { ...prev };

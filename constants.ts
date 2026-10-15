@@ -1,10 +1,23 @@
-import { InputRow } from './types';
+import { InputRow, ShiftType } from './types';
 
 export const DAYS = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6'];
 export const PERIODS = [
   'Sáng 1', 'Sáng 2', 'Sáng 3', 'Sáng 4', 'Sáng 5',
   'Chiều 1', 'Chiều 2', 'Chiều 3'
 ];
+
+export const SHIFT_OPTIONS = [
+  { id: 'ALL' as ShiftType, label: 'Cả ngày (Sáng & Chiều)', shortLabel: 'Cả ngày', icon: '☀️', description: 'Tất cả 8 tiết học trong ngày' },
+  { id: 'MORNING' as ShiftType, label: 'Buổi Sáng (Tiết 1 - 5)', shortLabel: 'Buổi Sáng', icon: '🌅', description: 'Các tiết học buổi sáng (Tiết 1 - 5)' },
+  { id: 'AFTERNOON' as ShiftType, label: 'Buổi Chiều (Tiết 1 - 3)', shortLabel: 'Buổi Chiều', icon: '🌇', description: 'Các tiết học buổi chiều (Tiết 1 - 3)' },
+];
+
+export const isPeriodInShift = (periodIdx: number, shift: ShiftType): boolean => {
+  if (shift === 'ALL') return true;
+  if (shift === 'MORNING') return periodIdx < 5;
+  if (shift === 'AFTERNOON') return periodIdx >= 5;
+  return true;
+};
 
 export const isValidSlot = (dayIdx: number, periodIdx: number) => {
   if (dayIdx === 0 || dayIdx === 1) { // Thứ 2, Thứ 3

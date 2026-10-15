@@ -35,19 +35,22 @@ export enum ReportType {
   SUBJECT = 'SUBJECT'
 }
 
-export type ConstraintType = 'TEACHER_BUSY' | 'FIXED_SESSION';
+export type ShiftType = 'ALL' | 'MORNING' | 'AFTERNOON';
+
+export type ConstraintType = 'TEACHER_BUSY' | 'FIXED_SESSION' | 'CLASS_SHIFT' | 'TEACHER_SHIFT';
 
 export interface Constraint {
   id: string;
   type: ConstraintType;
-  // For Teacher Busy
+  // For Teacher Busy / Teacher Shift
   teacher?: string;
-  // For Fixed Session
+  // For Fixed Session / Class Shift
   className?: string;
   subject?: string;
   
-  day: number; // 0-based index
-  period: number; // 0-based index
+  day?: number; // 0-based index
+  period?: number; // 0-based index
+  shift?: ShiftType; // 'ALL' | 'MORNING' | 'AFTERNOON'
 }
 
 export interface TimetableVersion {
