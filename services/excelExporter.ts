@@ -442,7 +442,48 @@ export const exportScheduleToExcel = async (schedule: TimetableGrid, rawData: In
   wsSubject['!cols'] = [{wch: 5}, {wch: 25}, {wch: 15}, {wch: 15}, {wch: 15}];
   XLSX.utils.book_append_sheet(wb, wsSubject, "TK Môn học");
 
-  // --- XUẤT FILE EXCEL VỚI ĐỊNH DẠNG TÔ MÀU CẢNH BÁO TRÙNG LỊCH (CONDITIONAL FORMATTING) ---
+  // --- SHEET 5: DANH MỤC CHỌN (DÙNG CHO DANH SÁCH THẢ XUỐNG DATA VALIDATION) ---
+  const classDropdownOptions: Record<string, string[]> = {};
+  let maxDropdownRows = allTeachers.length;
+
+  CLASSES.forEach(cls => {
+    const classAssignments = rawData.filter(r => r.className === cls);
+    const options = [
+      ...Array.from(new Set(classAssignments.map(r => `${r.subject} (${r.teacher})`))),
+      'Chào cờ',
+      'Sinh hoạt',
+      '(Trống)'
+    ];
+    classDropdownOptions[cls] = options;
+    if (options.length > maxDropdownRows) {
+      maxDropdownRows = options.length;
+    }
+  });
+
+  const wsDataDropdown: (string)[][] = [];
+  const headerRowDropdown: string[] = ['Tất Cả Giáo Viên', ''];
+  CLASSES.forEach(cls => headerRowDropdown.push(`Lớp ${cls}`));
+  wsDataDropdown.push(headerRowDropdown);
+
+  for (let r = 0; r < maxDropdownRows; r++) {
+    const row: string[] = [
+      allTeachers[r] || '',
+      ''
+    ];
+    CLASSES.forEach(cls => {
+      row.push(classDropdownOptions[cls]?.[r] || '');
+    });
+    wsDataDropdown.push(row);
+  }
+
+  const wsDropdown = XLSX.utils.aoa_to_sheet(wsDataDropdown);
+  applySheetStyles(wsDropdown);
+  const wscolsDropdown = [{ wch: 20 }, { wch: 5 }];
+  CLASSES.forEach(() => wscolsDropdown.push({ wch: 22 }));
+  wsDropdown['!cols'] = wscolsDropdown;
+  XLSX.utils.book_append_sheet(wb, wsDropdown, "Danh Mục Chọn");
+
+  // --- XUẤT FILE EXCEL VỚI ĐỊNH DẠNG TÔ MÀU CẢNH BÁO TRÙNG LỊCH & DANH SÁCH CHỌN THẢ XUỐNG (DROPDOWN) ---
   const fileName = "ThoiKhoaBieu-tuan-1-2025.xlsx";
 
   try {
@@ -469,15 +510,24 @@ export const exportScheduleToExcel = async (schedule: TimetableGrid, rawData: In
 
       // 4. Áp dụng Conditional Formatting cho Sheet 1 ("TKB Lớp"):
       // Quét toàn bộ các ô phân công từ C2 đến cột lớp cuối cùng hàng cuối cùng.
-      // Công thức: Nếu ô khác rỗng VÀ tên giáo viên trong ngoặc xuất hiện > 1 lần trong hàng đó thì TÔ ĐỎ Ô ĐÓ!
       const cfSqref = `${firstClassCol}2:${lastClassCol}${maxTkbRow}`;
       const cfFormula1 = `AND(${firstClassCol}2&lt;&gt;&quot;&quot;,COUNTIF($${firstClassCol}2:$${lastClassCol}2,&quot;*(&quot;&amp;MID(${firstClassCol}2,SEARCH(&quot;(&quot;,${firstClassCol}2&amp;&quot;(&quot;)+1,SEARCH(&quot;)&quot;,${firstClassCol}2&amp;&quot;)&quot;)-SEARCH(&quot;(&quot;,${firstClassCol}2&amp;&quot;(&quot;)-1)&amp;&quot;)*&quot;)&gt;1)`;
       const cfXml1 = `<conditionalFormatting sqref="${cfSqref}"><cfRule type="expression" dxfId="0" priority="1"><formula>${cfFormula1}</formula></cfRule></conditionalFormatting>`;
 
+      // 5. Áp dụng Data Validation (Danh sách chọn thả xuống Dropdown List) cho từng cột Lớp trong Sheet 1 ("TKB Lớp"):
+      const dvTags = CLASSES.map((cls, idx) => {
+        const colLetter = XLSX.utils.encode_col(2 + idx);
+        const endRow = 1 + (classDropdownOptions[cls]?.length || 1);
+        return `<dataValidation type="list" allowBlank="1" showInputMessage="1" showErrorMessage="1" sqref="${colLetter}2:${colLetter}${maxTkbRow}"><formula1>&apos;Danh Mục Chọn&apos;!$${colLetter}$2:$${colLetter}$${endRow}</formula1></dataValidation>`;
+      }).join('');
+      const dvXml = `<dataValidations count="${CLASSES.length}">${dvTags}</dataValidations>`;
+
+      const combinedSheet1Xml = cfXml1 + dvXml;
+
       if (sheet1Xml.includes('<ignoredErrors>')) {
-        sheet1Xml = sheet1Xml.replace('<ignoredErrors>', cfXml1 + '<ignoredErrors>');
+        sheet1Xml = sheet1Xml.replace('<ignoredErrors>', combinedSheet1Xml + '<ignoredErrors>');
       } else {
-        sheet1Xml = sheet1Xml.replace('</worksheet>', cfXml1 + '</worksheet>');
+        sheet1Xml = sheet1Xml.replace('</worksheet>', combinedSheet1Xml + '</worksheet>');
       }
       zip.file('xl/worksheets/sheet1.xml', sheet1Xml);
 
