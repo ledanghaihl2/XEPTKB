@@ -782,6 +782,7 @@ function App() {
               teachers={uniqueTeachers}
               classes={uniqueClasses}
               subjects={uniqueSubjects}
+              data={data}
             />
           )}
         </div>

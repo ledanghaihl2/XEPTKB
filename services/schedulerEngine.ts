@@ -226,6 +226,109 @@ function isTeacherBusyAt(
   return false;
 }
 
+export interface ClassShiftRule {
+  morningDays?: number[];
+  afternoonDays?: number[];
+  shift?: ShiftType;
+}
+
+/**
+ * Kiểm tra ô (d, p) có hợp lệ với lịch học ca/thứ của lớp không
+ */
+export function isSlotAllowedForClass(
+  cls: string,
+  d: number,
+  p: number,
+  classRuleMap?: Map<string, ClassShiftRule>
+): boolean {
+  if (!isValidSlot(d, p)) return false;
+  if (!classRuleMap || !classRuleMap.has(cls)) return true;
+
+  const rule = classRuleMap.get(cls)!;
+  const isMorning = p < 5;
+
+  // Nếu có cấu hình chi tiết theo từng thứ (morningDays / afternoonDays)
+  if (rule.morningDays !== undefined || rule.afternoonDays !== undefined) {
+    if (isMorning) {
+      if (!rule.morningDays || !rule.morningDays.includes(d)) return false;
+    } else {
+      if (!rule.afternoonDays || !rule.afternoonDays.includes(d)) return false;
+    }
+    return true;
+  }
+
+  // Tương thích ngược với ràng buộc ca học kiểu cũ (shift toàn tuần)
+  if (rule.shift) {
+    return isPeriodInShift(p, rule.shift);
+  }
+
+  return true;
+}
+
+/**
+ * Xây dựng tập hợp các ô (teacher_d_p) bị bận của giáo viên từ danh sách ràng buộc
+ */
+export function buildTeacherBusySet(constraints: Constraint[]): Set<string> {
+  const teacherBusySet = new Set<string>();
+  constraints.forEach(c => {
+    if (c.type === 'TEACHER_BUSY' && c.teacher) {
+      if (c.day !== undefined && c.period !== undefined) {
+        teacherBusySet.add(`${c.teacher}_${c.day}_${c.period}`);
+      } else if (c.day !== undefined && c.shift) {
+        for (let p = 0; p < PERIODS.length; p++) {
+          if (isPeriodInShift(p, c.shift)) {
+            teacherBusySet.add(`${c.teacher}_${c.day}_${p}`);
+          }
+        }
+      }
+    }
+    if (c.type === 'TEACHER_SHIFT' && c.teacher) {
+      if (c.morningDays !== undefined || c.afternoonDays !== undefined) {
+        for (let d = 0; d < DAYS.length; d++) {
+          for (let p = 0; p < PERIODS.length; p++) {
+            const isMorning = p < 5;
+            if (isMorning) {
+              if (!c.morningDays || !c.morningDays.includes(d)) {
+                teacherBusySet.add(`${c.teacher}_${d}_${p}`);
+              }
+            } else {
+              if (!c.afternoonDays || !c.afternoonDays.includes(d)) {
+                teacherBusySet.add(`${c.teacher}_${d}_${p}`);
+              }
+            }
+          }
+        }
+      } else if (c.shift) {
+        for (let d = 0; d < DAYS.length; d++) {
+          for (let p = 0; p < PERIODS.length; p++) {
+            if (!isPeriodInShift(p, c.shift)) {
+              teacherBusySet.add(`${c.teacher}_${d}_${p}`);
+            }
+          }
+        }
+      }
+    }
+  });
+  return teacherBusySet;
+}
+
+/**
+ * Xây dựng bản đồ quy tắc ca/thứ học cho từng lớp từ danh sách ràng buộc
+ */
+export function buildClassRuleMap(constraints: Constraint[]): Map<string, ClassShiftRule> {
+  const classRuleMap = new Map<string, ClassShiftRule>();
+  constraints.forEach(c => {
+    if (c.type === 'CLASS_SHIFT' && c.className) {
+      classRuleMap.set(c.className, {
+        morningDays: c.morningDays,
+        afternoonDays: c.afternoonDays,
+        shift: c.shift
+      });
+    }
+  });
+  return classRuleMap;
+}
+
 /**
  * Kiểm tra một tiết học có thể đặt vào slot (d, p) của lớp cls không
  */
@@ -239,17 +342,14 @@ function canPlaceInSlot(
   teacherBusySet: Set<string>,
   fixedSlots: Set<string>,
   allowGap = false,
-  classShiftMap?: Map<string, ShiftType>
+  classRuleMap?: Map<string, ClassShiftRule>
 ): boolean {
   if (!isValidSlot(d, p)) return false;
   if (fixedSlots.has(`${cls}_${d}_${p}`)) return false;
   if (grid[cls]?.[d]?.[p] !== null) return false;
 
-  // Kiểm tra ràng buộc buổi học của lớp (Buổi sáng / Buổi chiều / Cả ngày)
-  if (classShiftMap && classShiftMap.has(cls)) {
-    const shift = classShiftMap.get(cls)!;
-    if (!isPeriodInShift(p, shift)) return false;
-  }
+  // Kiểm tra ràng buộc buổi học & thứ học của lớp (Buổi sáng / Buổi chiều / Từng thứ trong tuần)
+  if (!isSlotAllowedForClass(cls, d, p, classRuleMap)) return false;
 
   // Giáo viên có bận ở ô này không
   if (isTeacherBusyAt(grid, teacher, d, p, teacherBusySet, cls)) return false;
@@ -286,7 +386,7 @@ function resolveUnassignedWithEjectionChain(
   unassignedList: InputRow[],
   teacherBusySet: Set<string>,
   fixedSlots: Set<string>,
-  classShiftMap?: Map<string, ShiftType>
+  classRuleMap?: Map<string, ClassShiftRule>
 ): InputRow[] {
   let remainingUnassigned = [...unassignedList];
   let progress = true;
@@ -304,7 +404,7 @@ function resolveUnassignedWithEjectionChain(
       // Bước 1: Tìm ô trống trực tiếp
       for (let d = 0; d < DAYS.length && !placed; d++) {
         for (let p = 0; p < PERIODS.length && !placed; p++) {
-          if (canPlaceInSlot(grid, cls, d, p, subj, teacher, teacherBusySet, fixedSlots, false, classShiftMap)) {
+          if (canPlaceInSlot(grid, cls, d, p, subj, teacher, teacherBusySet, fixedSlots, false, classRuleMap)) {
             grid[cls][d][p] = { day: d, period: p, subject: subj, teacher };
             placed = true;
             progress = true;
@@ -321,7 +421,7 @@ function resolveUnassignedWithEjectionChain(
         for (let p = 0; p < PERIODS.length && !placed; p++) {
           if (!isValidSlot(d, p)) continue;
           if (fixedSlots.has(`${cls}_${d}_${p}`)) continue;
-          if (classShiftMap && classShiftMap.has(cls) && !isPeriodInShift(p, classShiftMap.get(cls)!)) continue;
+          if (!isSlotAllowedForClass(cls, d, p, classRuleMap)) continue;
           const occupier = grid[cls]?.[d]?.[p];
           if (!occupier) continue;
 
@@ -347,7 +447,7 @@ function resolveUnassignedWithEjectionChain(
           for (let d_new = 0; d_new < DAYS.length && !foundAlternative; d_new++) {
             for (let p_new = 0; p_new < PERIODS.length && !foundAlternative; p_new++) {
               if (d_new === d && p_new === p) continue;
-              if (canPlaceInSlot(grid, cls, d_new, p_new, origOccupier.subject, origOccupier.teacher, teacherBusySet, fixedSlots, false, classShiftMap)) {
+              if (canPlaceInSlot(grid, cls, d_new, p_new, origOccupier.subject, origOccupier.teacher, teacherBusySet, fixedSlots, false, classRuleMap)) {
                 // Thử đặt
                 grid[cls][d_new][p_new] = { day: d_new, period: p_new, subject: origOccupier.subject, teacher: origOccupier.teacher };
                 grid[cls][d][p] = { day: d, period: p, subject: subj, teacher };
@@ -383,7 +483,7 @@ function resolveUnassignedWithEjectionChain(
           if (!isValidSlot(d, p)) continue;
           if (grid[cls]?.[d]?.[p] !== null) continue; // ô của cls phải đang trống
           if (fixedSlots.has(`${cls}_${d}_${p}`)) continue;
-          if (classShiftMap && classShiftMap.has(cls) && !isPeriodInShift(p, classShiftMap.get(cls)!)) continue;
+          if (!isSlotAllowedForClass(cls, d, p, classRuleMap)) continue;
 
           // Kiểm tra xem cls có nhận được môn subj vào (d, p) không nếu teacher rảnh
           let countSameToday = 0;
@@ -416,7 +516,7 @@ function resolveUnassignedWithEjectionChain(
           for (let d2 = 0; d2 < DAYS.length && !movedOther; d2++) {
             for (let p2 = 0; p2 < PERIODS.length && !movedOther; p2++) {
               if (d2 === d && p2 === p) continue;
-              if (canPlaceInSlot(grid, conflictingClass, d2, p2, otherSession.subject, otherSession.teacher, teacherBusySet, fixedSlots, false, classShiftMap)) {
+              if (canPlaceInSlot(grid, conflictingClass, d2, p2, otherSession.subject, otherSession.teacher, teacherBusySet, fixedSlots, false, classRuleMap)) {
                 grid[conflictingClass][d2][p2] = { day: d2, period: p2, subject: otherSession.subject, teacher: otherSession.teacher };
                 grid[cls][d][p] = { day: d, period: p, subject: subj, teacher };
 
@@ -462,39 +562,14 @@ function generateInitialGrid(data: InputRow[], constraints: Constraint[] = []) {
   let bestUnassigned: InputRow[] = [];
 
   const fixedSlots = new Set<string>();
-  const teacherBusySet = new Set<string>();
-  const classShiftMap = new Map<string, ShiftType>();
-
   constraints.forEach(c => {
     if (c.type === 'FIXED_SESSION' && c.className && c.day !== undefined && c.period !== undefined) {
       fixedSlots.add(`${c.className}_${c.day}_${c.period}`);
     }
-    if (c.type === 'TEACHER_BUSY' && c.teacher) {
-      if (c.day !== undefined && c.period !== undefined) {
-        teacherBusySet.add(`${c.teacher}_${c.day}_${c.period}`);
-      } else if (c.day !== undefined && c.shift) {
-        // Giáo viên bận cả buổi trong ngày
-        for (let p = 0; p < PERIODS.length; p++) {
-          if (isPeriodInShift(p, c.shift)) {
-            teacherBusySet.add(`${c.teacher}_${c.day}_${p}`);
-          }
-        }
-      }
-    }
-    if (c.type === 'CLASS_SHIFT' && c.className && c.shift) {
-      classShiftMap.set(c.className, c.shift);
-    }
-    if (c.type === 'TEACHER_SHIFT' && c.teacher && c.shift) {
-      // Giáo viên chỉ dạy 1 buổi -> bận ở buổi còn lại cho tất cả các ngày
-      for (let d = 0; d < DAYS.length; d++) {
-        for (let p = 0; p < PERIODS.length; p++) {
-          if (!isPeriodInShift(p, c.shift)) {
-            teacherBusySet.add(`${c.teacher}_${d}_${p}`);
-          }
-        }
-      }
-    }
   });
+
+  const teacherBusySet = buildTeacherBusySet(constraints);
+  const classRuleMap = buildClassRuleMap(constraints);
 
   const baseOrderedSlots: { d: number; p: number }[] = [];
   for (let p = 0; p < PERIODS.length; p++) {
@@ -522,6 +597,20 @@ function generateInitialGrid(data: InputRow[], constraints: Constraint[] = []) {
       }
     }
 
+    // Đồng bộ giáo viên bận từ teacherBusySet vào ma trận teacherBusy
+    teacherBusySet.forEach(key => {
+      const lastUnderscore = key.lastIndexOf('_');
+      const secondLastUnderscore = key.lastIndexOf('_', lastUnderscore - 1);
+      if (secondLastUnderscore !== -1) {
+        const teacher = key.substring(0, secondLastUnderscore);
+        const d = parseInt(key.substring(secondLastUnderscore + 1, lastUnderscore), 10);
+        const p = parseInt(key.substring(lastUnderscore + 1), 10);
+        if (teacherBusy[d] && teacherBusy[d][p]) {
+          teacherBusy[d][p].add(teacher);
+        }
+      }
+    });
+
     type Need = { subject: string; teacher: string; remaining: number };
     const needs: Record<string, Need[]> = {};
     CLASSES.forEach(cls => needs[cls] = []);
@@ -532,30 +621,6 @@ function generateInitialGrid(data: InputRow[], constraints: Constraint[] = []) {
           teacher: row.teacher,
           remaining: row.sessionsPerWeek
         });
-      }
-    });
-
-    // 1. Áp dụng ràng buộc Giáo viên bận & Ca dạy giáo viên
-    constraints.forEach(c => {
-      if (c.type === 'TEACHER_BUSY' && c.teacher) {
-        if (c.day !== undefined && c.period !== undefined) {
-          teacherBusy[c.day][c.period].add(c.teacher);
-        } else if (c.day !== undefined && c.shift) {
-          for (let p = 0; p < PERIODS.length; p++) {
-            if (isPeriodInShift(p, c.shift)) {
-              teacherBusy[c.day][p].add(c.teacher);
-            }
-          }
-        }
-      }
-      if (c.type === 'TEACHER_SHIFT' && c.teacher && c.shift) {
-        for (let d = 0; d < DAYS.length; d++) {
-          for (let p = 0; p < PERIODS.length; p++) {
-            if (!isPeriodInShift(p, c.shift)) {
-              teacherBusy[d][p].add(c.teacher);
-            }
-          }
-        }
       }
     });
 
@@ -619,7 +684,7 @@ function generateInitialGrid(data: InputRow[], constraints: Constraint[] = []) {
 
         const validNeeds = needs[cls].filter(need => {
           if (need.remaining <= 0) return false;
-          if (classShiftMap.has(cls) && !isPeriodInShift(p, classShiftMap.get(cls)!)) return false;
+          if (!isSlotAllowedForClass(cls, d, p, classRuleMap)) return false;
           if (teacherBusy[d][p].has(need.teacher)) return false;
 
           const currentCount = classSubjectTodayCount[cls][d][need.subject] || 0;
@@ -681,7 +746,7 @@ function generateInitialGrid(data: InputRow[], constraints: Constraint[] = []) {
     // KÍCH HOẠT CHUỖI ĐẨY DỜI (EJECTION CHAIN) ĐỂ GIẢI CỨU 100% TIẾT KẸT
     let finalUnassigned = rawUnassigned;
     if (rawUnassigned.length > 0) {
-      finalUnassigned = resolveUnassignedWithEjectionChain(grid, rawUnassigned, teacherBusySet, fixedSlots, classShiftMap);
+      finalUnassigned = resolveUnassignedWithEjectionChain(grid, rawUnassigned, teacherBusySet, fixedSlots, classRuleMap);
     }
 
     if (finalUnassigned.length < minUnplaced) {
@@ -692,7 +757,7 @@ function generateInitialGrid(data: InputRow[], constraints: Constraint[] = []) {
     }
   }
 
-  return { grid: bestGrid, unassigned: bestUnassigned, unplacedCount: minUnplaced, classShiftMap };
+  return { grid: bestGrid, unassigned: bestUnassigned, unplacedCount: minUnplaced, classRuleMap };
 }
 
 /**
@@ -702,7 +767,7 @@ function optimizeWithSimulatedAnnealing(
   initialGrid: TimetableGrid,
   constraints: Constraint[] = [],
   maxIterations = 5000,
-  classShiftMap?: Map<string, ShiftType>
+  classRuleMap?: Map<string, ClassShiftRule>
 ): TimetableGrid {
   let currentGrid = JSON.parse(JSON.stringify(initialGrid)) as TimetableGrid;
   let currentPenalty = calculatePenalty(currentGrid, 0);
@@ -717,12 +782,7 @@ function optimizeWithSimulatedAnnealing(
     }
   });
 
-  const teacherBusySet = new Set<string>();
-  constraints.forEach(c => {
-    if (c.type === 'TEACHER_BUSY' && c.teacher && c.day !== undefined && c.period !== undefined) {
-      teacherBusySet.add(`${c.teacher}_${c.day}_${c.period}`);
-    }
-  });
+  const teacherBusySet = buildTeacherBusySet(constraints);
 
   let temperature = 40.0;
   const coolingRate = 0.998;
@@ -748,12 +808,9 @@ function optimizeWithSimulatedAnnealing(
 
     if (!s1 && !s2) continue;
 
-    // Ràng buộc buổi học của lớp (không hoán đổi tiết sang buổi bị cấm)
-    if (classShiftMap && classShiftMap.has(cls)) {
-      const allowedShift = classShiftMap.get(cls)!;
-      if (s1 && !isPeriodInShift(p2, allowedShift)) continue;
-      if (s2 && !isPeriodInShift(p1, allowedShift)) continue;
-    }
+    // Ràng buộc ca học & thứ học của lớp (không hoán đổi tiết sang buổi/thứ bị cấm)
+    if (s1 && !isSlotAllowedForClass(cls, d2, p2, classRuleMap)) continue;
+    if (s2 && !isSlotAllowedForClass(cls, d1, p1, classRuleMap)) continue;
 
     // Kiểm tra ràng buộc tiết bận của giáo viên
     if (s1 && teacherBusySet.has(`${s1.teacher}_${d2}_${p2}`)) continue;
@@ -861,7 +918,7 @@ export const generateSchedule = (data: InputRow[], constraints: Constraint[] = [
   const initialMetrics = evaluateScheduleQuality(initial.grid, allTeachers);
 
   // Bước 2: Tối ưu hóa sâu bằng Simulated Annealing (triệt tiêu tiết trống, ghép tiết đôi, cân đối sư phạm)
-  const optimizedGrid = optimizeWithSimulatedAnnealing(initial.grid, constraints, 5000, initial.classShiftMap);
+  const optimizedGrid = optimizeWithSimulatedAnnealing(initial.grid, constraints, 5000, initial.classRuleMap);
   const finalMetrics = evaluateScheduleQuality(optimizedGrid, allTeachers);
   const timeMs = Date.now() - startTime;
 

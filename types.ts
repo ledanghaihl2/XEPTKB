@@ -51,6 +51,8 @@ export interface Constraint {
   day?: number; // 0-based index
   period?: number; // 0-based index
   shift?: ShiftType; // 'ALL' | 'MORNING' | 'AFTERNOON'
+  morningDays?: number[]; // Các thứ học/dạy buổi sáng: 0 (T2) -> 4 (T6)
+  afternoonDays?: number[]; // Các thứ học/dạy buổi chiều: 0 (T2) -> 4 (T6)
 }
 
 export interface TimetableVersion {
