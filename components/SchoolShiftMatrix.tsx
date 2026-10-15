@@ -40,6 +40,9 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
   const [modalAfternoonDays, setModalAfternoonDays] = useState<number[]>([]);
   const [resetOverrides, setResetOverrides] = useState<boolean>(true);
 
+  // State bộ lọc chỉ hiển thị các lớp bị thiếu sức chứa (quá tải)
+  const [onlyShowOverloaded, setOnlyShowOverloaded] = useState<boolean>(false);
+
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Tự động đóng dropdown khi nhấp chuột ra ngoài
@@ -81,8 +84,8 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
     return list.length > 0 ? list : ['6', '7', '8', '9'];
   }, [classes]);
 
-  // Lọc lớp theo khối đang chọn hiển thị
-  const filteredClasses = useMemo(() => {
+  // Danh sách các lớp theo khối đang chọn hiển thị (trước khi lọc theo trạng thái quá tải)
+  const currentGradeClasses = useMemo(() => {
     if (selectedGrade === 'ALL') return classes;
     return classes.filter(cls => cls.startsWith(selectedGrade));
   }, [classes, selectedGrade]);
@@ -166,6 +169,112 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
     });
     return map;
   }, [classes, data]);
+
+  // Phân tích toàn diện sức chứa & cảnh báo sớm xung đột (Early Warning Capacity Conflict Engine)
+  const capacityStats = useMemo(() => {
+    const targetClasses = currentGradeClasses;
+    const overloadedList: { className: string; assigned: number; capacity: number; missing: number }[] = [];
+    const tightList: { className: string; assigned: number; capacity: number; remaining: number }[] = [];
+    const safeList: { className: string; assigned: number; capacity: number; remaining: number }[] = [];
+
+    let totalAssigned = 0;
+    let totalCapacity = 0;
+
+    targetClasses.forEach(cls => {
+      const conf = classShiftMap.get(cls) || { morningDays: [0, 1, 2, 3, 4], afternoonDays: [0, 1, 2, 3, 4] };
+      const cap = conf.morningDays.length * 5 + conf.afternoonDays.length * 3;
+      const assigned = classSessionsMap.get(cls) || 0;
+
+      totalAssigned += assigned;
+      totalCapacity += cap;
+
+      if (assigned > cap) {
+        overloadedList.push({
+          className: cls,
+          assigned,
+          capacity: cap,
+          missing: assigned - cap
+        });
+      } else if (cap - assigned <= 2) {
+        tightList.push({
+          className: cls,
+          assigned,
+          capacity: cap,
+          remaining: cap - assigned
+        });
+      } else {
+        safeList.push({
+          className: cls,
+          assigned,
+          capacity: cap,
+          remaining: cap - assigned
+        });
+      }
+    });
+
+    return {
+      overloadedList,
+      tightList,
+      safeList,
+      totalAssigned,
+      totalCapacity
+    };
+  }, [currentGradeClasses, classShiftMap, classSessionsMap]);
+
+  // Lọc danh sách lớp hiển thị trên bảng (có tính năng lọc chỉ xem các lớp quá tải)
+  const filteredClasses = useMemo(() => {
+    if (!onlyShowOverloaded) return currentGradeClasses;
+    return currentGradeClasses.filter(cls => 
+      capacityStats.overloadedList.some(item => item.className === cls)
+    );
+  }, [currentGradeClasses, onlyShowOverloaded, capacityStats.overloadedList]);
+
+  // Tự động giải quyết nhanh xung đột: Bù thêm ca học cho các lớp bị thiếu sức chứa
+  const handleAutoResolveOverloadedClasses = () => {
+    if (capacityStats.overloadedList.length === 0) return;
+
+    const updates: { className: string; morningDays: number[]; afternoonDays: number[] }[] = [];
+
+    capacityStats.overloadedList.forEach(item => {
+      const conf = classShiftMap.get(item.className) || { morningDays: [0, 1, 2, 3, 4], afternoonDays: [] };
+      let newM = [...conf.morningDays];
+      let newA = [...conf.afternoonDays];
+
+      // 1. Ưu tiên bật các buổi sáng chưa học (mỗi buổi sáng +5 tiết)
+      for (let d = 0; d < 5; d++) {
+        const curCap = newM.length * 5 + newA.length * 3;
+        if (curCap >= item.assigned) break;
+        if (!newM.includes(d)) {
+          newM.push(d);
+          newM.sort((a, b) => a - b);
+        }
+      }
+
+      // 2. Bổ sung các buổi chiều theo thứ tự sư phạm tối ưu: T3 (1), T5 (3), T2 (0), T4 (2), T6 (4)
+      const afternoonPriority = [1, 3, 0, 2, 4];
+      for (const d of afternoonPriority) {
+        const curCap = newM.length * 5 + newA.length * 3;
+        if (curCap >= item.assigned) break;
+        if (!newA.includes(d)) {
+          newA.push(d);
+          newA.sort((a, b) => a - b);
+        }
+      }
+
+      updates.push({
+        className: item.className,
+        morningDays: newM,
+        afternoonDays: newA
+      });
+    });
+
+    if (updates.length > 0 && onBatchUpdateCustomClassShifts) {
+      onBatchUpdateCustomClassShifts(updates);
+      setToastMessage(`⚡ Đã tự động bù ca học thành công cho ${updates.length} lớp! Tất cả hiện đã đủ sức chứa.`);
+      setTimeout(() => setToastMessage(null), 3500);
+      setOnlyShowOverloaded(false);
+    }
+  };
 
   // Xử lý bật/tắt nhanh ca học khi click vào ô ma trận
   const handleToggleSlot = (cls: string, dayIdx: number, isMorning: boolean) => {
@@ -265,6 +374,30 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
     });
     return list;
   }, [classes, constraints]);
+
+  // Mô phỏng trước sức chứa trong Modal để cảnh báo sớm (Pre-Apply Simulation)
+  const modalCapacity = modalMorningDays.length * 5 + modalAfternoonDays.length * 3;
+  const modalSimulatedOverloaded = useMemo(() => {
+    if (!isSchoolModalOpen) return [];
+    const list: { className: string; assigned: number; missing: number }[] = [];
+    classes.forEach(cls => {
+      const isOverride = individualOverrideClasses.includes(cls);
+      if (!resetOverrides && isOverride) {
+        const conf = classShiftMap.get(cls);
+        if (conf) {
+          const cCap = conf.morningDays.length * 5 + conf.afternoonDays.length * 3;
+          const assigned = classSessionsMap.get(cls) || 0;
+          if (assigned > cCap) list.push({ className: cls, assigned, missing: assigned - cCap });
+        }
+      } else {
+        const assigned = classSessionsMap.get(cls) || 0;
+        if (assigned > modalCapacity) {
+          list.push({ className: cls, assigned, missing: assigned - modalCapacity });
+        }
+      }
+    });
+    return list;
+  }, [isSchoolModalOpen, modalCapacity, resetOverrides, classes, individualOverrideClasses, classShiftMap, classSessionsMap]);
 
   // Mở modal áp dụng nhanh ca học Toàn trường
   const handleOpenSchoolShiftModal = () => {
@@ -846,18 +979,46 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
                         </div>
 
                         {/* Sức chứa và Nút Áp dụng */}
-                        <div className="flex items-center justify-between pt-1">
-                          <div className="text-[11px] text-gray-600">
-                            Sức chứa: <strong className="text-teal-900">{batchMorningDays.length * 5 + batchAfternoonDays.length * 3} tiết</strong> / tuần
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleExecuteBatchApply(gr)}
-                            className="px-3.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 active:scale-95"
-                          >
-                            <span>⚡ Áp dụng cho {getTargetClassesForGrade(gr).length} lớp</span>
-                          </button>
-                        </div>
+                        {(() => {
+                          const projectedBatchCap = batchMorningDays.length * 5 + batchAfternoonDays.length * 3;
+                          const targetGradeClasses = getTargetClassesForGrade(gr);
+                          const simulatedBatchOverloaded = targetGradeClasses.filter(c => {
+                            const ass = classSessionsMap.get(c) || 0;
+                            return ass > projectedBatchCap;
+                          });
+
+                          return (
+                            <div className="pt-1">
+                              {simulatedBatchOverloaded.length > 0 && (
+                                <div className="mb-2 p-2 rounded-lg bg-red-50 border border-red-200 text-red-900 text-[10px] space-y-0.5">
+                                  <div className="font-bold flex items-center gap-1 text-red-700">
+                                    <span>⚠️ Cảnh báo sớm:</span>
+                                    <span>Sẽ có {simulatedBatchOverloaded.length} lớp bị thiếu tiết ({projectedBatchCap}t)!</span>
+                                  </div>
+                                  <p className="text-red-600">
+                                    Lớp {simulatedBatchOverloaded.slice(0, 3).join(', ')}{simulatedBatchOverloaded.length > 3 ? '...' : ''} có tổng phân công lớn hơn {projectedBatchCap} tiết.
+                                  </p>
+                                </div>
+                              )}
+                              <div className="flex items-center justify-between">
+                                <div className="text-[11px] text-gray-600">
+                                  Sức chứa: <strong className="text-teal-900">{projectedBatchCap} tiết</strong> / tuần
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleExecuteBatchApply(gr)}
+                                  className={`px-3.5 py-1.5 rounded-lg text-white text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer ${
+                                    simulatedBatchOverloaded.length > 0 
+                                      ? 'bg-amber-600 hover:bg-amber-700' 
+                                      : 'bg-teal-600 hover:bg-teal-700'
+                                  }`}
+                                >
+                                  <span>{simulatedBatchOverloaded.length > 0 ? '⚠️' : '⚡'} Áp dụng cho {targetGradeClasses.length} lớp</span>
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>
@@ -898,6 +1059,105 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
             </button>
           </div>
         )}
+
+        {/* Banner Cảnh Báo Sớm Xung Đột Số Tiết & Sức Chứa (Early Warning Capacity Conflict Banner) */}
+        <div className="mt-3">
+          {capacityStats.overloadedList.length > 0 ? (
+            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-red-50 via-amber-50/50 to-red-50 border-2 border-red-300 shadow-sm space-y-2.5 animate-fadeIn">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-2.5">
+                  <span className="w-8 h-8 rounded-xl bg-red-600 text-white flex items-center justify-center text-sm font-black shadow-xs shrink-0 animate-bounce">
+                    ⚠️
+                  </span>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-xs font-black text-red-950 uppercase tracking-tight">
+                        CẢNH BÁO SỚM XUNG ĐỘT SỨC CHỨA: Phát hiện {capacityStats.overloadedList.length} lớp bị thiếu ca học!
+                      </h4>
+                      <span className="text-[10px] font-bold px-2 py-0.5 bg-red-600 text-white rounded-full uppercase shadow-2xs">
+                        Quá tải ca học
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-red-800 mt-0.5">
+                      Tổng số tiết phân công của các lớp này vượt quá số tiết mà các buổi học hiện tại có thể chứa. Thuật toán xếp TKB sẽ <strong>không thể xếp đủ tiết</strong> nếu không bổ sung thêm ca học.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Các nút hành động xử lý xung đột nhanh */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setOnlyShowOverloaded(prev => !prev)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs ${
+                      onlyShowOverloaded
+                        ? 'bg-red-700 text-white ring-2 ring-red-400'
+                        : 'bg-white hover:bg-red-100 text-red-800 border border-red-300'
+                    }`}
+                    title={onlyShowOverloaded ? 'Bấm để hiển thị lại toàn bộ danh sách lớp' : 'Bấm để chỉ hiển thị các lớp bị thiếu sức chứa'}
+                  >
+                    <span>{onlyShowOverloaded ? '👁️ Đang lọc xem:' : '🔍 Chỉ xem'}</span>
+                    <span>{capacityStats.overloadedList.length} lớp thiếu tiết</span>
+                    {onlyShowOverloaded && <span>✕</span>}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleAutoResolveOverloadedClasses}
+                    className="px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 active:scale-95 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                    title="Tự động bật thêm các buổi chiều tối ưu để toàn bộ các lớp bị thiếu đạt đủ sức chứa ngay lập tức"
+                  >
+                    <span>⚡ Tự động bù ca Chiều đủ sức chứa</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Danh sách các chip lớp bị thiếu sức chứa */}
+              <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-red-200/80">
+                <span className="text-[11px] font-bold text-red-950">Chi tiết lớp thiếu tiết:</span>
+                {capacityStats.overloadedList.map(item => (
+                  <span
+                    key={item.className}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-red-300 text-red-900 text-[11px] font-bold shadow-2xs"
+                  >
+                    <span>🏫 {item.className}:</span>
+                    <span className="text-gray-600">{item.assigned}t / {item.capacity}t</span>
+                    <span className="text-red-600 font-extrabold bg-red-100 px-1.5 py-0.2 rounded">
+                      Thiếu {item.missing}t
+                    </span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="p-2.5 rounded-xl bg-gradient-to-r from-emerald-50 via-teal-50/50 to-emerald-50 border border-emerald-200/90 shadow-2xs flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                <span className="w-5 h-5 rounded-lg bg-emerald-600 text-white flex items-center justify-center text-xs font-bold shadow-2xs">
+                  ✓
+                </span>
+                <div className="text-xs">
+                  <span className="font-bold text-emerald-950">
+                    Sức chứa an toàn (100%): Tất cả {currentGradeClasses.length} lớp đều đảm bảo đủ ca học!
+                  </span>
+                  <span className="text-emerald-700 text-[11px] ml-1.5">
+                    (Tổng phân công: <strong>{capacityStats.totalAssigned}t</strong> / Tổng sức chứa: <strong>{capacityStats.totalCapacity}t</strong>
+                    {capacityStats.tightList.length > 0 ? ` • ${capacityStats.tightList.length} lớp cận biên ≤ 2 tiết` : ''})
+                  </span>
+                </div>
+              </div>
+
+              {onlyShowOverloaded && (
+                <button
+                  type="button"
+                  onClick={() => setOnlyShowOverloaded(false)}
+                  className="text-xs font-bold text-teal-800 hover:underline cursor-pointer"
+                >
+                  Hủy lọc, xem lại tất cả lớp ✕
+                </button>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Chú giải (Legend) */}
         <div className="flex items-center gap-4 mt-3 pt-2.5 border-t border-gray-200/60 text-[11px] text-gray-600 flex-wrap">
@@ -1143,8 +1403,26 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
 
             {filteredClasses.length === 0 ? (
               <tr>
-                <td colSpan={12} className="p-8 text-center text-gray-400 italic">
-                  Không tìm thấy lớp nào phù hợp với bộ lọc khối đã chọn.
+                <td colSpan={12} className="p-8 text-center">
+                  <div className="flex flex-col items-center justify-center gap-2">
+                    <span className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-2xl font-bold">
+                      {onlyShowOverloaded ? '🎉' : '🔍'}
+                    </span>
+                    <h5 className="font-bold text-gray-900 text-sm">
+                      {onlyShowOverloaded 
+                        ? 'Tuyệt vời! Không có lớp nào bị thiếu sức chứa ca học.' 
+                        : 'Không tìm thấy lớp nào phù hợp với bộ lọc đã chọn.'}
+                    </h5>
+                    {onlyShowOverloaded && (
+                      <button
+                        type="button"
+                        onClick={() => setOnlyShowOverloaded(false)}
+                        className="px-3.5 py-1.5 rounded-lg bg-teal-600 text-white text-xs font-bold hover:bg-teal-700 transition-colors cursor-pointer"
+                      >
+                        Quay lại xem toàn bộ lớp
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ) : (
@@ -1173,35 +1451,46 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
                       </div>
                     </td>
 
-                    {/* Sức chứa và Phân công */}
-                    <td className="p-2.5 border-r border-gray-200">
+                    {/* Sức chứa và Phân công (Capacity Indicator Cell) */}
+                    <td className="p-2.5 border-r border-gray-200 min-w-[150px]">
                       <div className="flex items-center justify-between text-[11px] mb-1">
-                        <span className="font-semibold text-gray-700">
-                          {assignedSessions} / {capacity} tiết
+                        <span className="font-extrabold text-gray-900">
+                          {assignedSessions} / {capacity}t
                         </span>
                         {isOverloaded ? (
-                          <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-red-100 text-red-700 border border-red-200">
-                            Thiếu {assignedSessions - capacity}t
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-black bg-red-100 text-red-700 border border-red-300 animate-pulse flex items-center gap-0.5">
+                            <span>⚠️</span>
+                            <span>Thiếu {assignedSessions - capacity}t</span>
+                          </span>
+                        ) : isTight ? (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                            Dư {capacity - assignedSessions}t
                           </span>
                         ) : (
-                          <span className="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                            Đủ
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            Dư {capacity - assignedSessions}t
                           </span>
                         )}
                       </div>
 
                       {/* Thanh tỷ lệ sức chứa */}
-                      <div className="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden">
+                      <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden shadow-inner">
                         <div 
                           className={`h-full rounded-full transition-all duration-300 ${
                             isOverloaded 
-                              ? 'bg-red-500' 
+                              ? 'bg-red-600' 
                               : isTight 
                               ? 'bg-amber-500' 
                               : 'bg-emerald-500'
                           }`}
                           style={{ width: `${Math.min(100, capacity > 0 ? (assignedSessions / capacity) * 100 : 100)}%` }}
                         />
+                      </div>
+
+                      {/* Phân rã số buổi sáng / chiều */}
+                      <div className="flex items-center justify-between text-[9px] text-gray-500 font-medium mt-1">
+                        <span>🌅 {morningDays.length} sáng ({morningDays.length * 5}t)</span>
+                        <span>🌇 {afternoonDays.length} chiều ({afternoonDays.length * 3}t)</span>
                       </div>
                     </td>
 
@@ -1556,6 +1845,36 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
                   </div>
                 )}
               </div>
+
+              {/* Mô phỏng & Cảnh báo sớm sức chứa Toàn trường (Pre-Apply Capacity Simulation) */}
+              <div className="space-y-2">
+                {modalSimulatedOverloaded.length > 0 ? (
+                  <div className="p-3.5 rounded-xl border-2 border-red-300 bg-red-50/90 text-red-950 space-y-2 animate-fadeIn">
+                    <div className="flex items-center gap-2 font-black text-xs text-red-900">
+                      <span className="w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center text-xs shadow-2xs">⚠️</span>
+                      <span>CẢNH BÁO SỚM: Cấu hình này sẽ gây thiếu sức chứa cho {modalSimulatedOverloaded.length} lớp học!</span>
+                    </div>
+                    <p className="text-[11px] text-red-800">
+                      Sức chứa thiết lập hiện tại là <strong>{modalCapacity} tiết/tuần</strong> (Sáng {modalMorningDays.length * 5}t + Chiều {modalAfternoonDays.length * 3}t). Các lớp sau có số tiết phân công lớn hơn:
+                    </p>
+                    <div className="flex flex-wrap gap-1.5 pt-0.5">
+                      {modalSimulatedOverloaded.map(item => (
+                        <span key={item.className} className="px-2 py-0.5 rounded-md bg-white border border-red-200 text-red-700 text-[11px] font-bold shadow-2xs">
+                          🏫 {item.className}: {item.assigned}t (Thiếu {item.missing}t)
+                        </span>
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-red-700 italic">
+                      💡 Gợi ý: Thầy/Cô nên bật thêm ít nhất {Math.max(...modalSimulatedOverloaded.map(x => Math.ceil(x.missing / 3)))} buổi chiều (mỗi buổi chiều 3 tiết) để đảm bảo đủ sức chứa cho các lớp này.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-950 flex items-center gap-2 text-xs font-bold shadow-2xs">
+                    <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs shadow-2xs">✓</span>
+                    <span>Sức chứa dự kiến: {modalCapacity} tiết/tuần — Đáp ứng đủ 100% cho toàn bộ {classes.length} lớp học trong trường!</span>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Footer Modal */}
@@ -1572,10 +1891,18 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
                 type="button"
                 onClick={handleApplySchoolShiftModal}
                 disabled={modalMorningDays.length === 0 && modalAfternoonDays.length === 0}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs shadow-md shadow-teal-700/20 transition-all cursor-pointer"
+                className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-white font-bold text-xs shadow-md transition-all cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                  modalSimulatedOverloaded.length > 0
+                    ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-700/20'
+                    : 'bg-teal-600 hover:bg-teal-700 shadow-teal-700/20'
+                }`}
               >
-                <span>🏫✓</span>
-                <span>Xác nhận áp dụng cho Toàn trường</span>
+                <span>{modalSimulatedOverloaded.length > 0 ? '⚠️' : '🏫✓'}</span>
+                <span>
+                  {modalSimulatedOverloaded.length > 0
+                    ? `Xác nhận áp dụng (Cảnh báo: ${modalSimulatedOverloaded.length} lớp thiếu tiết)`
+                    : 'Xác nhận áp dụng cho Toàn trường'}
+                </span>
               </button>
             </div>
           </div>
