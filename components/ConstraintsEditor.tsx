@@ -139,6 +139,51 @@ const ConstraintsEditor: React.FC<Props> = ({
     classShifts.forEach(item => onRemove(item.id));
   };
 
+  // Cập nhật tùy biến ca học cho nhiều lớp cùng lúc (Cập nhật nguyên tử 100%)
+  const handleBatchUpdateCustomClassShifts = (
+    updates: { className: string; morningDays: number[]; afternoonDays: number[] }[],
+    schoolWideUpdate?: { morningDays: number[]; afternoonDays: number[] }
+  ) => {
+    if (onUpdateConstraints) {
+      onUpdateConstraints(prev => {
+        const updateClassSet = new Set(updates.map(u => u.className));
+        let next = prev.filter(c => !(c.type === 'CLASS_SHIFT' && updateClassSet.has(c.className || '')));
+        
+        if (schoolWideUpdate) {
+          next = next.filter(c => c.type !== 'SCHOOL_SHIFT');
+          next.push({
+            id: 'ss_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+            type: 'SCHOOL_SHIFT',
+            morningDays: [...schoolWideUpdate.morningDays],
+            afternoonDays: [...schoolWideUpdate.afternoonDays]
+          });
+        }
+
+        const additions: Constraint[] = updates.map(u => ({
+          id: 'cs_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+          type: 'CLASS_SHIFT',
+          className: u.className,
+          morningDays: [...u.morningDays],
+          afternoonDays: [...u.afternoonDays]
+        }));
+
+        return [...next, ...additions];
+      });
+      return;
+    }
+    // Fallback nếu không có onUpdateConstraints
+    updates.forEach(u => {
+      const existing = constraints.filter(c => c.type === 'CLASS_SHIFT' && c.className === u.className);
+      existing.forEach(item => onRemove(item.id));
+      onAdd({
+        type: 'CLASS_SHIFT',
+        className: u.className,
+        morningDays: u.morningDays,
+        afternoonDays: u.afternoonDays
+      });
+    });
+  };
+
   // Tính tổng số tiết tối đa có thể xếp theo cấu hình ca/thứ này
   const currentCapacity = (morningDays.length * 5) + (afternoonDays.length * 3);
 
@@ -360,6 +405,7 @@ const ConstraintsEditor: React.FC<Props> = ({
             onBatchUpdateClassShifts={handleBatchUpdateClassShifts}
             onUpdateSchoolShift={handleUpdateSchoolShift}
             onResetAllClassesToSchoolShift={handleResetAllClassesToSchoolShift}
+            onBatchUpdateCustomClassShifts={handleBatchUpdateCustomClassShifts}
           />
           
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-teal-50/60 rounded-xl border border-teal-200">

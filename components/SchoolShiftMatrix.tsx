@@ -10,6 +10,10 @@ interface Props {
   onBatchUpdateClassShifts?: (classes: string[], morningDays: number[], afternoonDays: number[]) => void;
   onUpdateSchoolShift?: (morningDays: number[], afternoonDays: number[], resetIndividualClasses?: boolean) => void;
   onResetAllClassesToSchoolShift?: () => void;
+  onBatchUpdateCustomClassShifts?: (
+    updates: { className: string; morningDays: number[]; afternoonDays: number[] }[],
+    schoolWideUpdate?: { morningDays: number[]; afternoonDays: number[] }
+  ) => void;
 }
 
 export const SchoolShiftMatrix: React.FC<Props> = ({
@@ -19,7 +23,8 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
   onUpdateClassShift,
   onBatchUpdateClassShifts,
   onUpdateSchoolShift,
-  onResetAllClassesToSchoolShift
+  onResetAllClassesToSchoolShift,
+  onBatchUpdateCustomClassShifts
 }) => {
   const [selectedGrade, setSelectedGrade] = useState<string>('ALL');
   
@@ -294,6 +299,155 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
       setToastMessage(`Đã đưa toàn bộ ${classes.length} lớp về tuân thủ ca học Toàn trường!`);
       setTimeout(() => setToastMessage(null), 3500);
     }
+  };
+
+  // Xử lý Bật/Tắt 1 lần cho CẢ TRƯỜNG (hoặc toàn bộ lớp thuộc khối đang lọc)
+  const handleToggleSchoolShiftSlot = (dayIdx: number, isMorning: boolean) => {
+    const targetClasses = filteredClasses.length > 0 ? filteredClasses : classes;
+    if (targetClasses.length === 0) return;
+
+    // Đếm số lớp hiện đang BẬT ca này trong danh sách mục tiêu
+    let activeCount = 0;
+    targetClasses.forEach(cls => {
+      const conf = classShiftMap.get(cls);
+      if (conf) {
+        if (isMorning && conf.morningDays.includes(dayIdx)) activeCount++;
+        if (!isMorning && conf.afternoonDays.includes(dayIdx)) activeCount++;
+      }
+    });
+
+    // Nếu tất cả lớp đã bật ca này -> TẮT CHO TẤT CẢ. Ngược lại (chưa bật hết) -> BẬT CHO TẤT CẢ.
+    const shouldTurnOn = activeCount < targetClasses.length;
+
+    // Chuẩn bị danh sách cập nhật cho từng lớp
+    const updates: { className: string; morningDays: number[]; afternoonDays: number[] }[] = [];
+    targetClasses.forEach(cls => {
+      const conf = classShiftMap.get(cls) || { morningDays: [0, 1, 2, 3, 4], afternoonDays: [0, 1, 2, 3, 4] };
+      let newM = [...conf.morningDays];
+      let newA = [...conf.afternoonDays];
+
+      if (isMorning) {
+        if (shouldTurnOn) {
+          if (!newM.includes(dayIdx)) newM.push(dayIdx);
+          newM.sort((a, b) => a - b);
+        } else {
+          newM = newM.filter(d => d !== dayIdx);
+        }
+      } else {
+        if (shouldTurnOn) {
+          if (!newA.includes(dayIdx)) newA.push(dayIdx);
+          newA.sort((a, b) => a - b);
+        } else {
+          newA = newA.filter(d => d !== dayIdx);
+        }
+      }
+
+      updates.push({
+        className: cls,
+        morningDays: newM,
+        afternoonDays: newA
+      });
+    });
+
+    // Đồng bộ vào ràng buộc Toàn trường nếu phạm vi là ALL hoặc đủ tất cả lớp
+    let schoolWideUpdate: { morningDays: number[]; afternoonDays: number[] } | undefined = undefined;
+    if (selectedGrade === 'ALL' || targetClasses.length === classes.length) {
+      const currentSchoolM = schoolWideConstraint?.morningDays !== undefined ? [...schoolWideConstraint.morningDays] : [0, 1, 2, 3, 4];
+      const currentSchoolA = schoolWideConstraint?.afternoonDays !== undefined ? [...schoolWideConstraint.afternoonDays] : [];
+      let nextSchoolM = [...currentSchoolM];
+      let nextSchoolA = [...currentSchoolA];
+
+      if (isMorning) {
+        if (shouldTurnOn) {
+          if (!nextSchoolM.includes(dayIdx)) nextSchoolM.push(dayIdx);
+          nextSchoolM.sort((a, b) => a - b);
+        } else {
+          nextSchoolM = nextSchoolM.filter(d => d !== dayIdx);
+        }
+      } else {
+        if (shouldTurnOn) {
+          if (!nextSchoolA.includes(dayIdx)) nextSchoolA.push(dayIdx);
+          nextSchoolA.sort((a, b) => a - b);
+        } else {
+          nextSchoolA = nextSchoolA.filter(d => d !== dayIdx);
+        }
+      }
+
+      schoolWideUpdate = {
+        morningDays: nextSchoolM,
+        afternoonDays: nextSchoolA
+      };
+    }
+
+    if (onBatchUpdateCustomClassShifts) {
+      onBatchUpdateCustomClassShifts(updates, schoolWideUpdate);
+    } else if (onBatchUpdateClassShifts) {
+      targetClasses.forEach(cls => {
+        const u = updates.find(item => item.className === cls);
+        if (u && onUpdateClassShift) onUpdateClassShift(cls, u.morningDays, u.afternoonDays);
+      });
+    }
+
+    const actionText = shouldTurnOn ? 'BẬT' : 'TẮT';
+    const shiftText = isMorning ? 'ca Sáng' : 'ca Chiều';
+    const dayText = DAYS[dayIdx];
+    const scopeText = selectedGrade === 'ALL' ? 'Toàn trường' : `Khối ${selectedGrade}`;
+    setToastMessage(`Đã ${actionText} ${shiftText} ${dayText} cho ${targetClasses.length} lớp (${scopeText}) thành công!`);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  // Bật hoặc Tắt nhanh cả tuần cho ca Sáng / Chiều cho cả trường
+  const handleQuickSetAllShifts = (isMorning: boolean) => {
+    const targetClasses = filteredClasses.length > 0 ? filteredClasses : classes;
+    if (targetClasses.length === 0) return;
+
+    // Kiểm tra xem hiện tại đã bật hết cả tuần chưa
+    let allOn = true;
+    targetClasses.forEach(cls => {
+      const conf = classShiftMap.get(cls);
+      if (conf) {
+        const days = isMorning ? conf.morningDays : conf.afternoonDays;
+        if (days.length < 5) allOn = false;
+      }
+    });
+
+    const shouldTurnOn = !allOn;
+    const allDays = [0, 1, 2, 3, 4];
+
+    const updates: { className: string; morningDays: number[]; afternoonDays: number[] }[] = [];
+    targetClasses.forEach(cls => {
+      const conf = classShiftMap.get(cls) || { morningDays: [0, 1, 2, 3, 4], afternoonDays: [0, 1, 2, 3, 4] };
+      updates.push({
+        className: cls,
+        morningDays: isMorning ? (shouldTurnOn ? allDays : []) : conf.morningDays,
+        afternoonDays: !isMorning ? (shouldTurnOn ? allDays : []) : conf.afternoonDays
+      });
+    });
+
+    let schoolWideUpdate: { morningDays: number[]; afternoonDays: number[] } | undefined = undefined;
+    if (selectedGrade === 'ALL' || targetClasses.length === classes.length) {
+      const currentSchoolM = schoolWideConstraint?.morningDays !== undefined ? [...schoolWideConstraint.morningDays] : [0, 1, 2, 3, 4];
+      const currentSchoolA = schoolWideConstraint?.afternoonDays !== undefined ? [...schoolWideConstraint.afternoonDays] : [];
+      schoolWideUpdate = {
+        morningDays: isMorning ? (shouldTurnOn ? allDays : []) : currentSchoolM,
+        afternoonDays: !isMorning ? (shouldTurnOn ? allDays : []) : currentSchoolA
+      };
+    }
+
+    if (onBatchUpdateCustomClassShifts) {
+      onBatchUpdateCustomClassShifts(updates, schoolWideUpdate);
+    } else if (onBatchUpdateClassShifts) {
+      targetClasses.forEach(cls => {
+        const u = updates.find(item => item.className === cls);
+        if (u && onUpdateClassShift) onUpdateClassShift(cls, u.morningDays, u.afternoonDays);
+      });
+    }
+
+    const actionText = shouldTurnOn ? 'BẬT HẾT CẢ TUẦN' : 'TẮT TẤT CẢ';
+    const shiftText = isMorning ? 'ca Sáng (T2-T6)' : 'ca Chiều (T2-T6)';
+    const scopeText = selectedGrade === 'ALL' ? 'Toàn trường' : `Khối ${selectedGrade}`;
+    setToastMessage(`Đã ${actionText} ${shiftText} cho ${targetClasses.length} lớp (${scopeText})!`);
+    setTimeout(() => setToastMessage(null), 3000);
   };
 
   // Thống kê tổng số lớp học theo từng buổi cho mỗi thứ
@@ -665,13 +819,31 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
               ))}
             </tr>
             <tr className="bg-slate-50 border-b border-gray-200 text-center text-[11px] text-gray-600 font-semibold">
-              {DAYS.map(day => (
+              {DAYS.map((day, dayIdx) => (
                 <React.Fragment key={day}>
-                  <th className="py-1 px-2 border-r border-teal-100/60 bg-teal-50/30 text-teal-800">
-                    🌅 Sáng
+                  <th 
+                    onClick={() => handleToggleSchoolShiftSlot(dayIdx, true)}
+                    className="py-1.5 px-2 border-r border-teal-100/60 bg-teal-50/40 hover:bg-teal-100/80 text-teal-800 cursor-pointer select-none transition-colors group"
+                    title={`Click để BẬT/TẮT ca Sáng ${day} cho CẢ TRƯỜNG (${filteredClasses.length} lớp)`}
+                  >
+                    <div className="flex items-center justify-center gap-1">
+                      <span>🌅 Sáng</span>
+                      <span className="w-3.5 h-3.5 rounded bg-teal-600 text-white inline-flex items-center justify-center text-[8px] font-bold shadow-2xs group-hover:scale-110 transition-transform">
+                        ⚡
+                      </span>
+                    </div>
                   </th>
-                  <th className="py-1 px-2 border-r border-gray-200 bg-amber-50/30 text-amber-800">
-                    🌇 Chiều
+                  <th 
+                    onClick={() => handleToggleSchoolShiftSlot(dayIdx, false)}
+                    className="py-1.5 px-2 border-r border-gray-200 bg-amber-50/40 hover:bg-amber-100/80 text-amber-800 cursor-pointer select-none transition-colors group"
+                    title={`Click để BẬT/TẮT ca Chiều ${day} cho CẢ TRƯỜNG (${filteredClasses.length} lớp)`}
+                  >
+                    <div className="flex items-center justify-center gap-1">
+                      <span>🌇 Chiều</span>
+                      <span className="w-3.5 h-3.5 rounded bg-amber-600 text-white inline-flex items-center justify-center text-[8px] font-bold shadow-2xs group-hover:scale-110 transition-transform">
+                        ⚡
+                      </span>
+                    </div>
                   </th>
                 </React.Fragment>
               ))}
@@ -679,6 +851,147 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
           </thead>
 
           <tbody className="divide-y divide-gray-100">
+            {/* Hàng Điều Khiển Nhanh Toàn Trường / Toàn Khối (Tích 1 lần được cả trường) */}
+            <tr className="bg-gradient-to-r from-teal-50/90 via-slate-50 to-amber-50/90 border-b-2 border-teal-400 font-bold shadow-2xs">
+              <td className="p-2 border-r border-teal-200 sticky left-0 bg-teal-50 z-10 text-center">
+                <div className="flex flex-col items-center justify-center">
+                  <span className="inline-flex items-center gap-1 text-teal-950 font-black text-xs uppercase tracking-tight">
+                    <span>🏫</span>
+                    <span>{selectedGrade === 'ALL' ? 'Cả Trường' : `Khối ${selectedGrade}`}</span>
+                  </span>
+                  <span className="text-[10px] text-teal-700 font-bold bg-teal-200/60 px-1.5 py-0.5 rounded-full mt-0.5">
+                    Tích 1 lần
+                  </span>
+                </div>
+              </td>
+              <td className="p-2 border-r border-teal-200 bg-teal-50/40">
+                <div className="flex flex-col gap-1">
+                  <div className="text-[11px] font-bold text-teal-900 flex items-center justify-between">
+                    <span>{filteredClasses.length} lớp</span>
+                    <span className="text-[10px] text-teal-700 font-semibold">Đổi toàn bộ</span>
+                  </div>
+                  <div className="flex items-center gap-1 text-[10px]">
+                    <button
+                      type="button"
+                      onClick={() => handleQuickSetAllShifts(true)}
+                      className="px-1.5 py-0.5 bg-white border border-teal-300 rounded text-teal-800 hover:bg-teal-100 font-semibold transition-colors cursor-pointer"
+                      title="Bật tất cả ca Sáng T2-T6 cho cả trường"
+                    >
+                      🌅 Bật hết sáng
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickSetAllShifts(false)}
+                      className="px-1.5 py-0.5 bg-white border border-amber-300 rounded text-amber-800 hover:bg-amber-100 font-semibold transition-colors cursor-pointer"
+                      title="Bật tất cả ca Chiều T2-T6 cho cả trường"
+                    >
+                      🌇 Bật hết chiều
+                    </button>
+                  </div>
+                </div>
+              </td>
+
+              {/* 10 Nút tích theo từng ca học */}
+              {[0, 1, 2, 3, 4].map(dayIdx => {
+                const targetClasses = filteredClasses.length > 0 ? filteredClasses : classes;
+                let mCount = 0;
+                let aCount = 0;
+                targetClasses.forEach(cls => {
+                  const conf = classShiftMap.get(cls);
+                  if (conf) {
+                    if (conf.morningDays.includes(dayIdx)) mCount++;
+                    if (conf.afternoonDays.includes(dayIdx)) aCount++;
+                  }
+                });
+
+                const isAllMorning = mCount === targetClasses.length && targetClasses.length > 0;
+                const isPartialMorning = mCount > 0 && mCount < targetClasses.length;
+
+                const isAllAfternoon = aCount === targetClasses.length && targetClasses.length > 0;
+                const isPartialAfternoon = aCount > 0 && aCount < targetClasses.length;
+
+                return (
+                  <React.Fragment key={dayIdx}>
+                    {/* Ô Sáng Toàn trường */}
+                    <td
+                      onClick={() => handleToggleSchoolShiftSlot(dayIdx, true)}
+                      className={`p-1.5 border-r border-teal-200 text-center cursor-pointer select-none transition-colors ${
+                        isAllMorning
+                          ? 'bg-teal-100/80 hover:bg-teal-200'
+                          : isPartialMorning
+                          ? 'bg-teal-50 hover:bg-teal-100'
+                          : 'bg-white hover:bg-slate-100'
+                      }`}
+                      title={`Click để ${isAllMorning ? 'TẮT' : 'BẬT'} ca Sáng ${DAYS[dayIdx]} cho TOÀN BỘ ${targetClasses.length} lớp`}
+                    >
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleSchoolShiftSlot(dayIdx, true);
+                        }}
+                        className={`w-8 h-8 rounded-lg inline-flex flex-col items-center justify-center font-extrabold text-xs transition-all shadow-xs cursor-pointer active:scale-90 ${
+                          isAllMorning
+                            ? 'bg-teal-600 text-white ring-2 ring-teal-500/40'
+                            : isPartialMorning
+                            ? 'bg-teal-100 text-teal-800 border-2 border-teal-600'
+                            : 'bg-slate-100 text-slate-400 border border-slate-300 hover:bg-slate-200'
+                        }`}
+                        style={{
+                          backgroundColor: isAllMorning ? '#0d9488' : isPartialMorning ? '#ccfbf1' : '#f1f5f9',
+                          color: isAllMorning ? '#ffffff' : isPartialMorning ? '#0f766e' : '#64748b',
+                          border: isAllMorning ? '1px solid #0f766e' : isPartialMorning ? '2px solid #0d9488' : '1px solid #cbd5e1'
+                        }}
+                      >
+                        {isAllMorning ? '✓' : isPartialMorning ? `${mCount}` : '—'}
+                      </button>
+                      <span className="block text-[9px] font-bold text-teal-900 mt-0.5 leading-none">
+                        {isAllMorning ? 'Tất cả' : isPartialMorning ? `${mCount} lớp` : 'Tắt'}
+                      </span>
+                    </td>
+
+                    {/* Ô Chiều Toàn trường */}
+                    <td
+                      onClick={() => handleToggleSchoolShiftSlot(dayIdx, false)}
+                      className={`p-1.5 border-r border-gray-300 text-center cursor-pointer select-none transition-colors ${
+                        isAllAfternoon
+                          ? 'bg-amber-100/80 hover:bg-amber-200'
+                          : isPartialAfternoon
+                          ? 'bg-amber-50 hover:bg-amber-100'
+                          : 'bg-white hover:bg-slate-100'
+                      }`}
+                      title={`Click để ${isAllAfternoon ? 'TẮT' : 'BẬT'} ca Chiều ${DAYS[dayIdx]} cho TOÀN BỘ ${targetClasses.length} lớp`}
+                    >
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleSchoolShiftSlot(dayIdx, false);
+                        }}
+                        className={`w-8 h-8 rounded-lg inline-flex flex-col items-center justify-center font-extrabold text-xs transition-all shadow-xs cursor-pointer active:scale-90 ${
+                          isAllAfternoon
+                            ? 'bg-amber-600 text-white ring-2 ring-amber-500/40'
+                            : isPartialAfternoon
+                            ? 'bg-amber-100 text-amber-800 border-2 border-amber-600'
+                            : 'bg-slate-100 text-slate-400 border border-slate-300 hover:bg-slate-200'
+                        }`}
+                        style={{
+                          backgroundColor: isAllAfternoon ? '#d97706' : isPartialAfternoon ? '#fef3c7' : '#f1f5f9',
+                          color: isAllAfternoon ? '#ffffff' : isPartialAfternoon ? '#b45309' : '#64748b',
+                          border: isAllAfternoon ? '1px solid #b45309' : isPartialAfternoon ? '2px solid #d97706' : '1px solid #cbd5e1'
+                        }}
+                      >
+                        {isAllAfternoon ? '✓' : isPartialAfternoon ? `${aCount}` : '—'}
+                      </button>
+                      <span className="block text-[9px] font-bold text-amber-900 mt-0.5 leading-none">
+                        {isAllAfternoon ? 'Tất cả' : isPartialAfternoon ? `${aCount} lớp` : 'Tắt'}
+                      </span>
+                    </td>
+                  </React.Fragment>
+                );
+              })}
+            </tr>
+
             {filteredClasses.length === 0 ? (
               <tr>
                 <td colSpan={12} className="p-8 text-center text-gray-400 italic">
