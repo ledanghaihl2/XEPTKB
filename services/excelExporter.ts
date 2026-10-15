@@ -11,12 +11,13 @@ declare global {
 }
 
 export const exportScheduleToExcel = async (schedule: TimetableGrid, rawData: InputRow[]) => {
-  if (!(window as any).XLSX) {
-    alert('Thư viện xuất Excel chưa sẵn sàng. Vui lòng thử lại sau giây lát.');
-    return;
-  }
-  const XLSX = (window as any).XLSX;
-  const wb = XLSX.utils.book_new();
+  try {
+    if (!(window as any).XLSX) {
+      alert('Thư viện xuất Excel chưa sẵn sàng. Vui lòng thử lại sau giây lát.');
+      return;
+    }
+    const XLSX = (window as any).XLSX;
+    const wb = XLSX.utils.book_new();
 
   const applySheetStyles = (ws: any, rowBorders: Set<number> = new Set()) => {
     if (!ws['!ref']) return;
@@ -411,6 +412,7 @@ export const exportScheduleToExcel = async (schedule: TimetableGrid, rawData: In
       total === 0 ? 'Chưa xếp' : ''
     ]);
   });
+  const wsClass = XLSX.utils.aoa_to_sheet(wsDataClass);
   applySheetStyles(wsClass);
   wsClass['!cols'] = [{wch: 5}, {wch: 15}, {wch: 15}, {wch: 15}, {wch: 15}];
   XLSX.utils.book_append_sheet(wb, wsClass, "TK Lớp");
@@ -557,4 +559,8 @@ export const exportScheduleToExcel = async (schedule: TimetableGrid, rawData: In
 
   // Phương án dự phòng chuẩn
   XLSX.writeFile(wb, fileName);
+  } catch (error: any) {
+    console.error('Lỗi khi xuất file Excel:', error);
+    alert('Không thể xuất file Excel: ' + (error?.message || error));
+  }
 };
