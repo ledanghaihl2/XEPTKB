@@ -625,16 +625,16 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
         <div className="flex items-center gap-4 mt-3 pt-2.5 border-t border-gray-200/60 text-[11px] text-gray-600 flex-wrap">
           <span className="font-semibold text-gray-700">Chú giải:</span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded bg-teal-100 border border-teal-300 inline-block text-center text-[10px] text-teal-800 font-bold leading-3">✓</span>
-            <span>Học ca Sáng (Tiết 1-5)</span>
+            <span className="w-4 h-4 rounded bg-teal-600 border border-teal-700 inline-flex items-center justify-center text-[10px] text-white font-bold" style={{ backgroundColor: '#0d9488', color: '#ffffff' }}>✓</span>
+            <span className="font-medium text-teal-900">Bật ca Sáng (Tiết 1-5)</span>
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded bg-amber-100 border border-amber-300 inline-block text-center text-[10px] text-amber-800 font-bold leading-3">✓</span>
-            <span>Học ca Chiều (Tiết 1-3)</span>
+            <span className="w-4 h-4 rounded bg-amber-600 border border-amber-700 inline-flex items-center justify-center text-[10px] text-white font-bold" style={{ backgroundColor: '#d97706', color: '#ffffff' }}>✓</span>
+            <span className="font-medium text-amber-900">Bật ca Chiều (Tiết 1-3)</span>
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="w-3.5 h-3.5 rounded bg-gray-100 border border-dashed border-gray-300 inline-block text-center text-[10px] text-gray-400 font-bold leading-3">-</span>
-            <span>Nghỉ ca học</span>
+            <span className="w-4 h-4 rounded bg-slate-100 border border-slate-300 inline-flex items-center justify-center text-[10px] text-slate-500 font-bold" style={{ backgroundColor: '#f1f5f9', color: '#64748b' }}>—</span>
+            <span className="text-gray-500">Tắt (Nghỉ ca)</span>
           </span>
           <span className="inline-flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
@@ -753,11 +753,12 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
                           {/* Ô Sáng */}
                           <td 
                             onClick={() => handleToggleSlot(cls, dayIdx, true)}
-                            className={`p-1.5 border-r border-teal-100/50 text-center cursor-pointer select-none transition-colors hover:bg-teal-100/70 ${
+                            className={`p-1.5 border-r border-teal-100/60 text-center cursor-pointer select-none transition-colors ${
                               isMorningActive 
-                                ? 'bg-teal-50/80' 
-                                : 'bg-transparent'
+                                ? 'bg-teal-50/70 hover:bg-teal-100/80' 
+                                : 'bg-white hover:bg-slate-100/70'
                             }`}
+                            style={{ backgroundColor: isMorningActive ? '#f0fdfa' : undefined }}
                             title={`Click để ${isMorningActive ? 'Tắt' : 'Bật'} ca Sáng ${DAYS[dayIdx]} cho lớp ${cls}`}
                           >
                             <button
@@ -766,11 +767,16 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
                                 e.stopPropagation();
                                 handleToggleSlot(cls, dayIdx, true);
                               }}
-                              className={`w-7 h-7 rounded-lg inline-flex items-center justify-center font-bold text-xs transition-all shadow-2xs ${
+                              className={`w-8 h-8 rounded-lg inline-flex items-center justify-center font-extrabold text-xs transition-all shadow-xs cursor-pointer active:scale-90 ${
                                 isMorningActive
-                                  ? 'bg-teal-600 text-white hover:bg-teal-700 active:scale-90 ring-1 ring-teal-500'
-                                  : 'text-gray-300 hover:text-gray-700 hover:bg-gray-100/80 border border-dashed border-gray-300'
+                                  ? 'bg-teal-600 text-white hover:bg-teal-700 ring-2 ring-teal-500/30'
+                                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-800 border border-slate-300'
                               }`}
+                              style={{
+                                backgroundColor: isMorningActive ? '#0d9488' : '#f1f5f9',
+                                color: isMorningActive ? '#ffffff' : '#475569',
+                                border: isMorningActive ? '1px solid #0f766e' : '1px solid #cbd5e1'
+                              }}
                             >
                               {isMorningActive ? '✓' : '—'}
                             </button>
@@ -779,11 +785,12 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
                           {/* Ô Chiều */}
                           <td 
                             onClick={() => handleToggleSlot(cls, dayIdx, false)}
-                            className={`p-1.5 border-r border-gray-200 text-center cursor-pointer select-none transition-colors hover:bg-amber-100/70 ${
+                            className={`p-1.5 border-r border-gray-200 text-center cursor-pointer select-none transition-colors ${
                               isAfternoonActive 
-                                ? 'bg-amber-50/80' 
-                                : 'bg-transparent'
+                                ? 'bg-amber-50/70 hover:bg-amber-100/80' 
+                                : 'bg-white hover:bg-slate-100/70'
                             }`}
+                            style={{ backgroundColor: isAfternoonActive ? '#fffbeb' : undefined }}
                             title={`Click để ${isAfternoonActive ? 'Tắt' : 'Bật'} ca Chiều ${DAYS[dayIdx]} cho lớp ${cls}`}
                           >
                             <button
@@ -792,11 +799,16 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
                                 e.stopPropagation();
                                 handleToggleSlot(cls, dayIdx, false);
                               }}
-                              className={`w-7 h-7 rounded-lg inline-flex items-center justify-center font-bold text-xs transition-all shadow-2xs ${
+                              className={`w-8 h-8 rounded-lg inline-flex items-center justify-center font-extrabold text-xs transition-all shadow-xs cursor-pointer active:scale-90 ${
                                 isAfternoonActive
-                                  ? 'bg-amber-600 text-white hover:bg-amber-700 active:scale-90 ring-1 ring-amber-500'
-                                  : 'text-gray-300 hover:text-gray-700 hover:bg-gray-100/80 border border-dashed border-gray-300'
+                                  ? 'bg-amber-600 text-white hover:bg-amber-700 ring-2 ring-amber-500/30'
+                                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-800 border border-slate-300'
                               }`}
+                              style={{
+                                backgroundColor: isAfternoonActive ? '#d97706' : '#f1f5f9',
+                                color: isAfternoonActive ? '#ffffff' : '#475569',
+                                border: isAfternoonActive ? '1px solid #b45309' : '1px solid #cbd5e1'
+                              }}
                             >
                               {isAfternoonActive ? '✓' : '—'}
                             </button>

@@ -10,7 +10,21 @@ if (!cssFile || !jsFile) {
   process.exit(1);
 }
 
-const css = fs.readFileSync(path.join('dist/assets', cssFile), 'utf-8');
+// Đảm bảo file style.css ở thư mục gốc luôn được đồng bộ với public/style.css
+if (fs.existsSync('public/style.css')) {
+  fs.copyFileSync('public/style.css', 'style.css');
+}
+
+// Đọc CSS đầy đủ nhất do Tailwind CLI biên dịch (100% đầy đủ class)
+let css = '';
+if (fs.existsSync('public/style.css')) {
+  css = fs.readFileSync('public/style.css', 'utf-8');
+} else if (fs.existsSync('dist/style.css')) {
+  css = fs.readFileSync('dist/style.css', 'utf-8');
+} else {
+  css = fs.readFileSync(path.join('dist/assets', cssFile), 'utf-8');
+}
+
 const js = fs.readFileSync(path.join('dist/assets', jsFile), 'utf-8');
 const xlsx = fs.readFileSync('public/vendor/xlsx.bundle.js', 'utf-8');
 

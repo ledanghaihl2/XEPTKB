@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npx @tailwindcss/cli -i ./src/styles.css -o ./public/style.css && vite build && node build_single_file.cjs",
+    "build": "npx @tailwindcss/cli -i ./src/styles.css -o ./public/style.css && node -e \"require('fs').copyFileSync('public/style.css', 'style.css')\" && vite build && node build_single_file.cjs",
     "preview": "vite preview"
   },
   "dependencies": {
