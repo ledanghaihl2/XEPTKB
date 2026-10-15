@@ -67,10 +67,35 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
     return classes.filter(cls => cls.startsWith(gr));
   };
 
+  // Ràng buộc ca học Toàn trường nếu có
+  const schoolWideConstraint = useMemo(() => {
+    return constraints.find(item => 
+      item.type === 'SCHOOL_SHIFT' || 
+      (item.type === 'CLASS_SHIFT' && (!item.className || item.className === 'ALL' || item.className === 'TOAN_TRUONG'))
+    );
+  }, [constraints]);
+
   // Phân tích cấu hình ca học của từng lớp từ danh sách ràng buộc
   const classShiftMap = useMemo(() => {
-    const map = new Map<string, { morningDays: number[]; afternoonDays: number[]; constraintId?: string }>();
+    const map = new Map<string, { morningDays: number[]; afternoonDays: number[]; constraintId?: string; isSchoolWide?: boolean }>();
 
+    // 1. Phân tích cấu hình mặc định toàn trường (nếu có)
+    let defaultMorningDays = [0, 1, 2, 3, 4];
+    let defaultAfternoonDays = [0, 1, 2, 3, 4];
+    if (schoolWideConstraint) {
+      if (schoolWideConstraint.morningDays !== undefined || schoolWideConstraint.afternoonDays !== undefined) {
+        defaultMorningDays = schoolWideConstraint.morningDays || [];
+        defaultAfternoonDays = schoolWideConstraint.afternoonDays || [];
+      } else if (schoolWideConstraint.shift === 'MORNING') {
+        defaultMorningDays = [0, 1, 2, 3, 4];
+        defaultAfternoonDays = [];
+      } else if (schoolWideConstraint.shift === 'AFTERNOON') {
+        defaultMorningDays = [];
+        defaultAfternoonDays = [0, 1, 2, 3, 4];
+      }
+    }
+
+    // 2. Gán cho từng lớp: ưu tiên ràng buộc riêng, nếu không có thì kế thừa toàn trường
     classes.forEach(cls => {
       const c = constraints.find(item => item.type === 'CLASS_SHIFT' && item.className === cls);
       if (c) {
@@ -91,15 +116,20 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
           aDays = [0, 1, 2, 3, 4];
         }
 
-        map.set(cls, { morningDays: mDays, afternoonDays: aDays, constraintId: c.id });
+        map.set(cls, { morningDays: mDays, afternoonDays: aDays, constraintId: c.id, isSchoolWide: false });
       } else {
-        // Mặc định: Nếu chưa thiết lập ràng buộc thì lớp học cả ngày (T2-T6)
-        map.set(cls, { morningDays: [0, 1, 2, 3, 4], afternoonDays: [0, 1, 2, 3, 4] });
+        // Kế thừa từ cấu hình Toàn trường (hoặc mặc định cả tuần)
+        map.set(cls, { 
+          morningDays: [...defaultMorningDays], 
+          afternoonDays: [...defaultAfternoonDays],
+          constraintId: schoolWideConstraint?.id,
+          isSchoolWide: !!schoolWideConstraint 
+        });
       }
     });
 
     return map;
-  }, [classes, constraints]);
+  }, [classes, constraints, schoolWideConstraint]);
 
   // Tính số tiết phân công của từng lớp
   const classSessionsMap = useMemo(() => {
@@ -240,6 +270,14 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
             <p className="text-xs text-gray-600 mt-1">
               Theo dõi lịch học ca Sáng & Chiều. Click trực tiếp vào ô để <strong className="text-teal-900">Bật / Tắt nhanh</strong> hoặc bấm <strong className="text-amber-800">⚡▾</strong> tại từng khối để <strong className="text-teal-900">Áp dụng mẫu ca học nhanh</strong> cho toàn khối!
             </p>
+            {schoolWideConstraint && (
+              <div className="inline-flex items-center gap-2 mt-2 px-3 py-1 rounded-lg bg-teal-100/90 border border-teal-300 text-teal-950 text-xs font-semibold shadow-xs flex-wrap">
+                <span className="font-extrabold text-teal-900">🏫 Ca học Toàn trường:</span>
+                <span>🌅 Sáng [{schoolWideConstraint.morningDays && schoolWideConstraint.morningDays.length > 0 ? schoolWideConstraint.morningDays.map(d => DAYS[d]).join(', ') : 'Nghỉ'}]</span>
+                <span className="text-teal-400 font-normal">|</span>
+                <span>🌇 Chiều [{schoolWideConstraint.afternoonDays && schoolWideConstraint.afternoonDays.length > 0 ? schoolWideConstraint.afternoonDays.map(d => DAYS[d]).join(', ') : 'Nghỉ'}]</span>
+              </div>
+            )}
           </div>
 
           {/* Bộ lọc Khối lớp kèm Dropdown thao tác nhanh trực tiếp & Nút in */}

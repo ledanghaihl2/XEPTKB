@@ -91,6 +91,24 @@ const ConstraintsEditor: React.FC<Props> = ({
     if (type === 'FIXED_SESSION' && (!selectedClass || !selectedSubject)) return;
     if (type === 'CLASS_SHIFT' && !selectedClass) return;
 
+    if (type === 'SCHOOL_SHIFT') {
+      if (morningDays.length === 0 && afternoonDays.length === 0) {
+        alert('Vui lòng chọn ít nhất 1 buổi (sáng hoặc chiều) trong tuần cho toàn trường!');
+        return;
+      }
+
+      // Xóa cấu hình SCHOOL_SHIFT cũ nếu đã tồn tại để tránh trùng lặp
+      const existing = constraints.filter(c => c.type === 'SCHOOL_SHIFT');
+      existing.forEach(item => onRemove(item.id));
+
+      onAdd({
+        type: 'SCHOOL_SHIFT',
+        morningDays: [...morningDays],
+        afternoonDays: [...afternoonDays],
+      });
+      return;
+    }
+
     if (type === 'CLASS_SHIFT') {
       if (morningDays.length === 0 && afternoonDays.length === 0) {
         alert('Vui lòng chọn ít nhất 1 buổi (sáng hoặc chiều) trong tuần!');
@@ -176,6 +194,11 @@ const ConstraintsEditor: React.FC<Props> = ({
   };
 
   const getConstraintDescription = (c: Constraint) => {
+    if (c.type === 'SCHOOL_SHIFT') {
+      const morningStr = formatDayList(c.morningDays);
+      const afternoonStr = formatDayList(c.afternoonDays);
+      return `🏫 TOÀN TRƯỜNG (${classes.length} lớp): 🌅 Sáng [${morningStr}] | 🌇 Chiều [${afternoonStr}]`;
+    }
     if (c.type === 'CLASS_SHIFT') {
       if (c.morningDays !== undefined || c.afternoonDays !== undefined) {
         const morningStr = formatDayList(c.morningDays);
@@ -286,12 +309,24 @@ const ConstraintsEditor: React.FC<Props> = ({
               onChange={e => setType(e.target.value as ConstraintType)}
               className="w-full p-2.5 border border-gray-300 rounded-lg shadow-sm focus:border-primary focus:ring-1 focus:ring-primary font-semibold text-sm text-gray-900 bg-white"
             >
-              <option value="CLASS_SHIFT">📅 Buổi học của lớp theo thứ (Class Shift by Days)</option>
+              <option value="SCHOOL_SHIFT">🏫 Ca học TOÀN TRƯỜNG theo thứ (Morning & Afternoon for Whole School)</option>
+              <option value="CLASS_SHIFT">📅 Buổi học của từng lớp theo thứ (Class Shift by Days)</option>
               <option value="TEACHER_SHIFT">👨‍🏫 Buổi dạy của giáo viên theo thứ (Teacher Shift by Days)</option>
               <option value="TEACHER_BUSY">⏳ Giáo viên bận tiết/buổi cụ thể (Teacher Busy)</option>
               <option value="FIXED_SESSION">📌 Tiết cố định (Fixed Session)</option>
             </select>
           </div>
+
+          {/* Phạm vi áp dụng cho SCHOOL_SHIFT */}
+          {type === 'SCHOOL_SHIFT' && (
+            <div>
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1.5">Phạm vi áp dụng</label>
+              <div className="w-full p-2.5 border border-teal-200 bg-teal-50/80 rounded-lg text-xs font-bold text-teal-900 flex items-center gap-2">
+                <span className="text-base">🏫</span>
+                <span>Áp dụng đồng bộ cho toàn bộ {classes.length} lớp học trong trường</span>
+              </div>
+            </div>
+          )}
 
           {/* Chọn Lớp (cho CLASS_SHIFT hoặc FIXED_SESSION) */}
           {(type === 'FIXED_SESSION' || type === 'CLASS_SHIFT') && (
@@ -420,8 +455,8 @@ const ConstraintsEditor: React.FC<Props> = ({
             </>
           )}
 
-          {/* KHU VỰC CẤU HÌNH THỨ HỌC BUỔI SÁNG & BUỔI CHIỀU (Dành cho CLASS_SHIFT & TEACHER_SHIFT) */}
-          {(type === 'CLASS_SHIFT' || type === 'TEACHER_SHIFT') && (
+          {/* KHU VỰC CẤU HÌNH THỨ HỌC BUỔI SÁNG & BUỔI CHIỀU (Dành cho SCHOOL_SHIFT, CLASS_SHIFT & TEACHER_SHIFT) */}
+          {(type === 'SCHOOL_SHIFT' || type === 'CLASS_SHIFT' || type === 'TEACHER_SHIFT') && (
             <div className="col-span-1 md:col-span-2 lg:col-span-3 bg-white p-4 md:p-5 rounded-xl border border-gray-200 shadow-sm space-y-4">
               
               {/* Tiêu đề & Các mẫu chọn nhanh (Presets) */}
@@ -429,7 +464,11 @@ const ConstraintsEditor: React.FC<Props> = ({
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-primary"></span>
                   <h4 className="font-bold text-sm text-gray-900">
-                    {type === 'CLASS_SHIFT' ? `Chọn các thứ học cho Lớp ${selectedClass}` : `Chọn các thứ dạy cho GV ${selectedTeacher}`}
+                    {type === 'SCHOOL_SHIFT'
+                      ? `🏫 Cấu hình Buổi Sáng & Buổi Chiều cho TOÀN BỘ CÁC LỚP TRONG TRƯỜNG (${classes.length} lớp)`
+                      : type === 'CLASS_SHIFT'
+                      ? `Chọn các thứ học cho Lớp ${selectedClass}`
+                      : `Chọn các thứ dạy cho GV ${selectedTeacher}`}
                   </h4>
                 </div>
                 
@@ -680,7 +719,10 @@ const ConstraintsEditor: React.FC<Props> = ({
           {constraints.map(c => {
             let badgeBg = 'bg-blue-100 text-blue-800 border-blue-200';
             let badgeLabel = 'Cố định';
-            if (c.type === 'TEACHER_BUSY') {
+            if (c.type === 'SCHOOL_SHIFT') {
+              badgeBg = 'bg-teal-700 text-white border-teal-800 shadow-xs font-black';
+              badgeLabel = '🏫 Toàn trường';
+            } else if (c.type === 'TEACHER_BUSY') {
               badgeBg = 'bg-red-100 text-red-800 border-red-200';
               badgeLabel = 'GV Bận';
             } else if (c.type === 'CLASS_SHIFT') {

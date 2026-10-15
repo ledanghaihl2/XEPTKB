@@ -315,10 +315,28 @@ export function buildTeacherBusySet(constraints: Constraint[]): Set<string> {
 /**
  * Xây dựng bản đồ quy tắc ca/thứ học cho từng lớp từ danh sách ràng buộc
  */
-export function buildClassRuleMap(constraints: Constraint[]): Map<string, ClassShiftRule> {
+export function buildClassRuleMap(constraints: Constraint[], classes?: string[]): Map<string, ClassShiftRule> {
   const classRuleMap = new Map<string, ClassShiftRule>();
+
+  // 1. Áp dụng ràng buộc ca học TOÀN TRƯỜNG trước (nếu có SCHOOL_SHIFT hoặc CLASS_SHIFT cho ALL)
+  const schoolShift = constraints.find(c => 
+    c.type === 'SCHOOL_SHIFT' || 
+    (c.type === 'CLASS_SHIFT' && (!c.className || c.className === 'ALL' || c.className === 'TOAN_TRUONG'))
+  );
+  if (schoolShift) {
+    const targetClasses = classes && classes.length > 0 ? classes : CLASSES;
+    targetClasses.forEach(cls => {
+      classRuleMap.set(cls, {
+        morningDays: schoolShift.morningDays,
+        afternoonDays: schoolShift.afternoonDays,
+        shift: schoolShift.shift
+      });
+    });
+  }
+
+  // 2. Ràng buộc cụ thể của từng lớp (sẽ ghi đè ràng buộc toàn trường nếu có lớp cá biệt)
   constraints.forEach(c => {
-    if (c.type === 'CLASS_SHIFT' && c.className) {
+    if (c.type === 'CLASS_SHIFT' && c.className && c.className !== 'ALL' && c.className !== 'TOAN_TRUONG') {
       classRuleMap.set(c.className, {
         morningDays: c.morningDays,
         afternoonDays: c.afternoonDays,
@@ -326,6 +344,7 @@ export function buildClassRuleMap(constraints: Constraint[]): Map<string, ClassS
       });
     }
   });
+
   return classRuleMap;
 }
 
@@ -568,8 +587,10 @@ function generateInitialGrid(data: InputRow[], constraints: Constraint[] = []) {
     }
   });
 
+  const dynamicClasses = Array.from(new Set(data.map(r => r.className))).filter(Boolean);
+  const targetClasses = dynamicClasses.length > 0 ? dynamicClasses : CLASSES;
   const teacherBusySet = buildTeacherBusySet(constraints);
-  const classRuleMap = buildClassRuleMap(constraints);
+  const classRuleMap = buildClassRuleMap(constraints, targetClasses);
 
   const baseOrderedSlots: { d: number; p: number }[] = [];
   for (let p = 0; p < PERIODS.length; p++) {

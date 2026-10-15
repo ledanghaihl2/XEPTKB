@@ -37,7 +37,7 @@ export enum ReportType {
 
 export type ShiftType = 'ALL' | 'MORNING' | 'AFTERNOON';
 
-export type ConstraintType = 'TEACHER_BUSY' | 'FIXED_SESSION' | 'CLASS_SHIFT' | 'TEACHER_SHIFT';
+export type ConstraintType = 'TEACHER_BUSY' | 'FIXED_SESSION' | 'CLASS_SHIFT' | 'TEACHER_SHIFT' | 'SCHOOL_SHIFT';
 
 export interface Constraint {
   id: string;
