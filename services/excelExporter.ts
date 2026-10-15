@@ -511,16 +511,25 @@ export const exportScheduleToExcel = async (schedule: TimetableGrid, rawData: In
     let stylesXml = await zip.file('xl/styles.xml')?.async('string');
 
     if (sheet1Xml && stylesXml) {
-      // 3. Khai báo kiểu định dạng cảnh báo lỗi dxf trong styles.xml:
-      // Nền màu đỏ nhạt (FFFFC7CE), Chữ in đậm màu đỏ sẫm (FF9C0006), Viền màu đỏ sẫm
-      const dxfXml = '<dxfs count="1"><dxf><font><color rgb="FF9C0006"/><b/></font><fill><patternFill patternType="solid"><fgColor rgb="FFFFC7CE"/><bgColor indexed="64"/></patternFill></fill><border><top style="thin" color="FF9C0006"/><bottom style="thin" color="FF9C0006"/><left style="thin" color="FF9C0006"/><right style="thin" color="FF9C0006"/></border></dxf></dxfs>';
+      // 3. Khai báo kiểu định dạng cảnh báo lỗi dxf trong styles.xml tuân thủ nghiêm ngặt chuẩn OpenXML ECMA-376:
+      // Trong <font>: <b/> phải đứng trước <color>
+      // Trong <border>: thứ tự bắt buộc là left, right, top, bottom
+      const dxfXml = '<dxfs count="1"><dxf><font><b/><color rgb="FF9C0006"/></font><fill><patternFill patternType="solid"><fgColor rgb="FFFFC7CE"/><bgColor indexed="64"/></patternFill></fill><border><left style="thin"><color rgb="FF9C0006"/></left><right style="thin"><color rgb="FF9C0006"/></right><top style="thin"><color rgb="FF9C0006"/></top><bottom style="thin"><color rgb="FF9C0006"/></bottom></border></dxf></dxfs>';
       
-      if (stylesXml.includes('<dxfs count="0"/>')) {
-        stylesXml = stylesXml.replace('<dxfs count="0"/>', dxfXml);
-      } else if (stylesXml.includes('</styleSheet>')) {
-        stylesXml = stylesXml.replace('</styleSheet>', dxfXml + '</styleSheet>');
-      }
+      stylesXml = stylesXml.replace(/<dxfs[\s\S]*?<\/dxfs>|<dxfs\s*count="0"\s*\/>/, dxfXml);
       zip.file('xl/styles.xml', stylesXml);
+
+      // Hàm chèn thẻ đúng thứ tự lược đồ (XML Schema sequence) của ECMA-376:
+      // conditionalFormatting & dataValidations phải đứng trước hyperlinks, pageMargins, ignoredErrors
+      const insertBeforeSchemaTags = (xml: string, content: string) => {
+        const candidates = ['<hyperlinks', '<printOptions', '<pageMargins', '<pageSetup', '<headerFooter', '<ignoredErrors', '</worksheet>'];
+        for (const tag of candidates) {
+          if (xml.includes(tag)) {
+            return xml.replace(tag, content + tag);
+          }
+        }
+        return xml.replace('</worksheet>', content + '</worksheet>');
+      };
 
       // 4. Áp dụng Conditional Formatting cho Sheet 1 ("TKB Lớp"):
       // Quét toàn bộ các ô phân công từ C2 đến cột lớp cuối cùng hàng cuối cùng.
@@ -537,23 +546,14 @@ export const exportScheduleToExcel = async (schedule: TimetableGrid, rawData: In
       const dvXml = `<dataValidations count="${CLASSES.length}">${dvTags}</dataValidations>`;
 
       const combinedSheet1Xml = cfXml1 + dvXml;
-
-      if (sheet1Xml.includes('<ignoredErrors>')) {
-        sheet1Xml = sheet1Xml.replace('<ignoredErrors>', combinedSheet1Xml + '<ignoredErrors>');
-      } else {
-        sheet1Xml = sheet1Xml.replace('</worksheet>', combinedSheet1Xml + '</worksheet>');
-      }
+      sheet1Xml = insertBeforeSchemaTags(sheet1Xml, combinedSheet1Xml);
       zip.file('xl/worksheets/sheet1.xml', sheet1Xml);
 
       // 5. Áp dụng Conditional Formatting cho Sheet 2 ("TKB Giáo viên"):
       // Tự động tô đỏ bất kỳ ô nào có chữ "TRÙNG"
       if (sheet2Xml) {
         const cfXml2 = `<conditionalFormatting sqref="B2:F${wsDataTKB_Teacher.length}"><cfRule type="expression" dxfId="0" priority="1"><formula>NOT(ISERROR(SEARCH(&quot;TRÙNG&quot;,B2)))</formula></cfRule></conditionalFormatting>`;
-        if (sheet2Xml.includes('<ignoredErrors>')) {
-          sheet2Xml = sheet2Xml.replace('<ignoredErrors>', cfXml2 + '<ignoredErrors>');
-        } else {
-          sheet2Xml = sheet2Xml.replace('</worksheet>', cfXml2 + '</worksheet>');
-        }
+        sheet2Xml = insertBeforeSchemaTags(sheet2Xml, cfXml2);
         zip.file('xl/worksheets/sheet2.xml', sheet2Xml);
       }
 
