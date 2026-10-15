@@ -450,6 +450,87 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
     setTimeout(() => setToastMessage(null), 3000);
   };
 
+  // Xử lý Bật/Tắt CẢ NGÀY (cả Sáng VÀ Chiều) cho Toàn bộ lớp khi nhấp đúp vào tiêu đề Thứ
+  const handleToggleWholeDayForSchool = (dayIdx: number) => {
+    const targetClasses = filteredClasses.length > 0 ? filteredClasses : classes;
+    if (targetClasses.length === 0) return;
+
+    // Đếm tổng số slot đang active cả sáng và chiều của ngày này
+    let activeSlotsCount = 0;
+    targetClasses.forEach(cls => {
+      const conf = classShiftMap.get(cls);
+      if (conf) {
+        if (conf.morningDays.includes(dayIdx)) activeSlotsCount++;
+        if (conf.afternoonDays.includes(dayIdx)) activeSlotsCount++;
+      }
+    });
+
+    const totalPossibleSlots = targetClasses.length * 2;
+    // Nếu chưa bật hết cả ngày (cả sáng và chiều) -> BẬT HẾT CẢ NGÀY cho toàn bộ lớp. Ngược lại -> TẮT CẢ NGÀY.
+    const shouldTurnOn = activeSlotsCount < totalPossibleSlots;
+
+    const updates: { className: string; morningDays: number[]; afternoonDays: number[] }[] = [];
+    targetClasses.forEach(cls => {
+      const conf = classShiftMap.get(cls) || { morningDays: [0, 1, 2, 3, 4], afternoonDays: [0, 1, 2, 3, 4] };
+      let newM = [...conf.morningDays];
+      let newA = [...conf.afternoonDays];
+
+      if (shouldTurnOn) {
+        if (!newM.includes(dayIdx)) newM.push(dayIdx);
+        if (!newA.includes(dayIdx)) newA.push(dayIdx);
+        newM.sort((a, b) => a - b);
+        newA.sort((a, b) => a - b);
+      } else {
+        newM = newM.filter(d => d !== dayIdx);
+        newA = newA.filter(d => d !== dayIdx);
+      }
+
+      updates.push({
+        className: cls,
+        morningDays: newM,
+        afternoonDays: newA
+      });
+    });
+
+    let schoolWideUpdate: { morningDays: number[]; afternoonDays: number[] } | undefined = undefined;
+    if (selectedGrade === 'ALL' || targetClasses.length === classes.length) {
+      const currentSchoolM = schoolWideConstraint?.morningDays !== undefined ? [...schoolWideConstraint.morningDays] : [0, 1, 2, 3, 4];
+      const currentSchoolA = schoolWideConstraint?.afternoonDays !== undefined ? [...schoolWideConstraint.afternoonDays] : [];
+      let nextSchoolM = [...currentSchoolM];
+      let nextSchoolA = [...currentSchoolA];
+
+      if (shouldTurnOn) {
+        if (!nextSchoolM.includes(dayIdx)) nextSchoolM.push(dayIdx);
+        if (!nextSchoolA.includes(dayIdx)) nextSchoolA.push(dayIdx);
+        nextSchoolM.sort((a, b) => a - b);
+        nextSchoolA.sort((a, b) => a - b);
+      } else {
+        nextSchoolM = nextSchoolM.filter(d => d !== dayIdx);
+        nextSchoolA = nextSchoolA.filter(d => d !== dayIdx);
+      }
+
+      schoolWideUpdate = {
+        morningDays: nextSchoolM,
+        afternoonDays: nextSchoolA
+      };
+    }
+
+    if (onBatchUpdateCustomClassShifts) {
+      onBatchUpdateCustomClassShifts(updates, schoolWideUpdate);
+    } else if (onBatchUpdateClassShifts) {
+      targetClasses.forEach(cls => {
+        const u = updates.find(item => item.className === cls);
+        if (u && onUpdateClassShift) onUpdateClassShift(cls, u.morningDays, u.afternoonDays);
+      });
+    }
+
+    const actionText = shouldTurnOn ? 'BẬT CẢ NGÀY (Sáng & Chiều)' : 'TẮT CẢ NGÀY (Nghỉ cả ngày)';
+    const dayText = DAYS[dayIdx];
+    const scopeText = selectedGrade === 'ALL' ? 'Toàn trường' : `Khối ${selectedGrade}`;
+    setToastMessage(`Đã ${actionText} ${dayText} cho ${targetClasses.length} lớp (${scopeText})!`);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
   // Thống kê tổng số lớp học theo từng buổi cho mỗi thứ
   const shiftStats = useMemo(() => {
     const morningCount: number[] = [0, 0, 0, 0, 0];
@@ -812,9 +893,34 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
               <th rowSpan={2} className="p-3 border-r border-gray-200 w-36 min-w-[140px] text-left">
                 Phân công / Sức chứa
               </th>
-              {DAYS.map(day => (
-                <th key={day} colSpan={2} className="p-2 border-r border-gray-200 border-b min-w-[120px] bg-slate-50/80">
-                  {day}
+              {DAYS.map((day, dayIdx) => (
+                <th 
+                  key={day} 
+                  colSpan={2} 
+                  onDoubleClick={(e) => {
+                    e.preventDefault();
+                    handleToggleWholeDayForSchool(dayIdx);
+                  }}
+                  className="p-2 border-r border-gray-200 border-b min-w-[120px] bg-slate-50/80 hover:bg-slate-100 cursor-pointer select-none transition-colors group"
+                  title={`⚡ Nhấp đúp (hoặc bấm nút "Cả ngày") để BẬT/TẮT CẢ NGÀY (Sáng & Chiều) ${day} cho TOÀN BỘ ${filteredClasses.length} lớp`}
+                >
+                  <div className="flex items-center justify-between px-1">
+                    <span className="font-bold text-gray-900 text-xs flex items-center gap-1">
+                      <span>📅</span>
+                      <span>{day}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleWholeDayForSchool(dayIdx);
+                      }}
+                      className="text-[10px] px-1.5 py-0.5 rounded bg-white hover:bg-teal-50 text-gray-600 hover:text-teal-900 border border-gray-200 hover:border-teal-300 font-bold shadow-2xs transition-all cursor-pointer group-hover:scale-105"
+                      title={`Bấm để Bật/Tắt CẢ NGÀY (Sáng & Chiều) ${day} cho cả trường`}
+                    >
+                      ⚡ Cả ngày
+                    </button>
+                  </div>
                 </th>
               ))}
             </tr>
