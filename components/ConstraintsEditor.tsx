@@ -49,6 +49,20 @@ const ConstraintsEditor: React.FC<Props> = ({
     });
   };
 
+  // Xử lý cập nhật hàng loạt cho nhiều lớp (Áp dụng theo khối hoặc toàn trường)
+  const handleBatchUpdateClassShifts = (targetClasses: string[], mDays: number[], aDays: number[]) => {
+    targetClasses.forEach(cls => {
+      const existing = constraints.filter(c => c.type === 'CLASS_SHIFT' && c.className === cls);
+      existing.forEach(item => onRemove(item.id));
+      onAdd({
+        type: 'CLASS_SHIFT',
+        className: cls,
+        morningDays: mDays,
+        afternoonDays: aDays
+      });
+    });
+  };
+
   // Tính tổng số tiết tối đa có thể xếp theo cấu hình ca/thứ này
   const currentCapacity = (morningDays.length * 5) + (afternoonDays.length * 3);
 
@@ -236,6 +250,7 @@ const ConstraintsEditor: React.FC<Props> = ({
             constraints={constraints}
             data={data}
             onUpdateClassShift={handleUpdateClassShift}
+            onBatchUpdateClassShifts={handleBatchUpdateClassShifts}
           />
           
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-teal-50/60 rounded-xl border border-teal-200">
