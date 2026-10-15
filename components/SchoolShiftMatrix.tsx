@@ -276,6 +276,25 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
     }
   };
 
+  // Cuộn mượt và làm nổi bật hàng lớp học khi click vào chip cảnh báo
+  const handleFocusClassRow = (cls: string) => {
+    // Nếu lớp đó đang bị ẩn do bộ lọc khối, chuyển tạm về khối tương ứng hoặc toàn trường
+    const match = cls.match(/^(\d+)/);
+    if (selectedGrade !== 'ALL' && match && match[1] !== selectedGrade) {
+      setSelectedGrade(match[1]);
+    }
+    setTimeout(() => {
+      const rowEl = document.getElementById(`class-row-${cls}`);
+      if (rowEl) {
+        rowEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        rowEl.classList.add('ring-4', 'ring-red-400', 'bg-red-50');
+        setTimeout(() => {
+          rowEl.classList.remove('ring-4', 'ring-red-400', 'bg-red-50');
+        }, 2500);
+      }
+    }, 60);
+  };
+
   // Xử lý bật/tắt nhanh ca học khi click vào ô ma trận
   const handleToggleSlot = (cls: string, dayIdx: number, isMorning: boolean) => {
     if (!onUpdateClassShift) return;
@@ -1027,6 +1046,43 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
               </div>
             </div>
 
+            {/* Nút Lọc Cách Ly: Chỉ xem các lớp thiếu tiết (Conflict Isolation Filter Button) */}
+            <button
+              type="button"
+              onClick={() => {
+                if (capacityStats.overloadedList.length === 0 && !onlyShowOverloaded) {
+                  setToastMessage("✅ Tuyệt vời! Hiện tại không có lớp nào bị thiếu sức chứa ca học.");
+                  setTimeout(() => setToastMessage(null), 3000);
+                  return;
+                }
+                setOnlyShowOverloaded(prev => !prev);
+              }}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer select-none active:scale-95 ${
+                onlyShowOverloaded
+                  ? 'bg-red-600 text-white ring-2 ring-red-400 shadow-sm animate-pulse'
+                  : capacityStats.overloadedList.length > 0
+                  ? 'bg-white hover:bg-red-50 text-red-700 border-2 border-red-400 shadow-2xs hover:border-red-500 animate-bounce'
+                  : 'bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-200'
+              }`}
+              title={
+                onlyShowOverloaded
+                  ? 'Đang lọc xem các lớp thiếu tiết. Bấm để hiển thị lại toàn bộ các lớp'
+                  : capacityStats.overloadedList.length > 0
+                  ? `Phát hiện ${capacityStats.overloadedList.length} lớp thiếu tiết! Bấm để lọc riêng các lớp này`
+                  : 'Tất cả các lớp đều đảm bảo đủ sức chứa ca học'
+              }
+            >
+              <span>{onlyShowOverloaded ? '👁️' : capacityStats.overloadedList.length > 0 ? '⚠️' : '✓'}</span>
+              <span>
+                {onlyShowOverloaded
+                  ? `Đang lọc: ${filteredClasses.length} lớp thiếu`
+                  : capacityStats.overloadedList.length > 0
+                  ? `Chỉ xem ${capacityStats.overloadedList.length} lớp thiếu tiết`
+                  : '0 lớp thiếu tiết'}
+              </span>
+              {onlyShowOverloaded && <span className="text-[10px] bg-red-800 px-1 py-0.2 rounded-full">✕</span>}
+            </button>
+
             {/* Nút In Ma trận */}
             <button
               type="button"
@@ -1039,6 +1095,32 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
             </button>
           </div>
         </div>
+
+        {/* Thanh cảnh báo Chế độ Lọc Cách Ly khi người dùng bấm "Chỉ xem lớp thiếu tiết" */}
+        {onlyShowOverloaded && (
+          <div className="flex items-center justify-between gap-3 mt-3 px-4 py-2.5 bg-red-100/90 border-2 border-red-300 rounded-xl text-xs text-red-950 shadow-xs animate-fadeIn">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="w-6 h-6 rounded-lg bg-red-600 text-white flex items-center justify-center text-xs font-bold shadow-2xs">
+                🔍
+              </span>
+              <span className="font-extrabold uppercase">
+                Chế độ lọc cách ly: Đang hiển thị {filteredClasses.length} lớp bị thiếu sức chứa ca học
+              </span>
+              <span className="text-red-700 text-[11px] hidden md:inline">
+                • Bấm vào các ô để bật thêm ca Sáng / Chiều cho từng lớp hoặc dùng nút "Tự động bù ca Chiều".
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setOnlyShowOverloaded(false)}
+              className="inline-flex items-center gap-1.5 px-3 py-1 bg-red-600 hover:bg-red-700 text-white font-bold text-[11px] rounded-lg shadow-2xs transition-colors cursor-pointer whitespace-nowrap"
+              title="Bấm để quay lại hiển thị toàn bộ danh sách lớp học"
+            >
+              <span>Xem lại tất cả {classes.length} lớp</span>
+              <span>✕</span>
+            </button>
+          </div>
+        )}
 
         {/* Thanh chỉ báo ngữ cảnh khi chọn Khối (Grade Scope Active Banner) */}
         {selectedGrade !== 'ALL' && (
@@ -1112,20 +1194,23 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
                 </div>
               </div>
 
-              {/* Danh sách các chip lớp bị thiếu sức chứa */}
+              {/* Danh sách các chip lớp bị thiếu sức chứa (Click để cuộn và highlight) */}
               <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-red-200/80">
-                <span className="text-[11px] font-bold text-red-950">Chi tiết lớp thiếu tiết:</span>
+                <span className="text-[11px] font-bold text-red-950">Chi tiết lớp thiếu tiết (Click để xem):</span>
                 {capacityStats.overloadedList.map(item => (
-                  <span
+                  <button
+                    type="button"
                     key={item.className}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-red-300 text-red-900 text-[11px] font-bold shadow-2xs"
+                    onClick={() => handleFocusClassRow(item.className)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white hover:bg-red-50 border border-red-300 hover:border-red-500 text-red-900 text-[11px] font-bold shadow-2xs transition-all hover:scale-105 cursor-pointer active:scale-95"
+                    title={`Click để cuộn tới và làm nổi bật dòng lớp ${item.className}`}
                   >
                     <span>🏫 {item.className}:</span>
                     <span className="text-gray-600">{item.assigned}t / {item.capacity}t</span>
                     <span className="text-red-600 font-extrabold bg-red-100 px-1.5 py-0.2 rounded">
                       Thiếu {item.missing}t
                     </span>
-                  </span>
+                  </button>
                 ))}
               </div>
             </div>
@@ -1265,11 +1350,17 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
               <td className="p-2 border-r border-teal-200 sticky left-0 bg-teal-50 z-10 text-center">
                 <div className="flex flex-col items-center justify-center">
                   <span className="inline-flex items-center gap-1 text-teal-950 font-black text-xs uppercase tracking-tight">
-                    <span>🏫</span>
-                    <span>{selectedGrade === 'ALL' ? 'Cả Trường' : `Khối ${selectedGrade}`}</span>
+                    <span>{onlyShowOverloaded ? '🚨' : '🏫'}</span>
+                    <span>
+                      {onlyShowOverloaded 
+                        ? `Lớp Thiếu (${filteredClasses.length})` 
+                        : selectedGrade === 'ALL' 
+                        ? 'Cả Trường' 
+                        : `Khối ${selectedGrade}`}
+                    </span>
                   </span>
-                  <span className="text-[10px] text-teal-700 font-bold bg-teal-200/60 px-1.5 py-0.5 rounded-full mt-0.5">
-                    Tích 1 lần
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full mt-0.5 ${onlyShowOverloaded ? 'bg-red-200 text-red-900 animate-pulse' : 'bg-teal-200/60 text-teal-700'}`}>
+                    {onlyShowOverloaded ? 'Bù nhanh ca' : 'Tích 1 lần'}
                   </span>
                 </div>
               </td>
@@ -1439,7 +1530,8 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
                 return (
                   <tr 
                     key={cls}
-                    className={`hover:bg-teal-50/20 transition-colors ${idx % 2 === 1 ? 'bg-slate-50/40' : 'bg-white'}`}
+                    id={`class-row-${cls}`}
+                    className={`hover:bg-teal-50/20 transition-all duration-300 ${idx % 2 === 1 ? 'bg-slate-50/40' : 'bg-white'}`}
                   >
                     {/* Tên Lớp */}
                     <td className="p-2.5 font-bold text-gray-900 border-r border-gray-200 sticky left-0 bg-inherit z-10 text-center">
