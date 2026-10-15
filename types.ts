@@ -53,3 +53,14 @@ export interface TimetableVersion {
   schedule: TimetableGrid;
   unassigned?: InputRow[];
 }
+
+export interface ExcelImportResult {
+  mode: 'TIMETABLE_GRID' | 'ASSIGNMENT_LIST';
+  schedule?: TimetableGrid;
+  data: InputRow[];
+  unassigned?: InputRow[];
+  conflicts?: string[];
+  detectedClasses?: string[];
+  message?: string;
+}
+

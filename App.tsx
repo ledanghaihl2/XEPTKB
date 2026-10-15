@@ -294,15 +294,32 @@ function App() {
 
     try {
       setIsGenerating(true);
-      const newData = await parseExcelData(file);
-      setData(newData);
-      // Reset input
+      const result = await parseExcelData(file);
+
+      // Reset input để có thể chọn lại cùng 1 file nếu cần
       if (fileInputRef.current) fileInputRef.current.value = '';
-      alert(`Đã nhập thành công ${newData.length} dòng dữ liệu phân công!`);
-      // Regenerate immediately with new data
-      handleGenerate(newData);
-    } catch (err) {
-      alert(err);
+
+      if (result.mode === 'TIMETABLE_GRID' && result.schedule) {
+        setSchedule(result.schedule);
+        setData(result.data);
+        setUnassigned(result.unassigned || []);
+        setIsGenerating(false);
+        setActiveTab('schedule');
+
+        if (result.conflicts && result.conflicts.length > 0) {
+          const conflictPreview = result.conflicts.slice(0, 4).join('\n• ');
+          const extra = result.conflicts.length > 4 ? `\n... và ${result.conflicts.length - 4} vị trí trùng khác.` : '';
+          alert(`✅ Đã nhập thành công Thời khóa biểu từ Excel!\n📊 Tổng cộng: ${result.data.length} nhóm môn học được tự động tính toán và đồng bộ.\n\n⚠️ CẢNH BÁO TRÙNG LỊCH GIÁO VIÊN (${result.conflicts.length} tiết):\n• ${conflictPreview}${extra}\n\nThầy/Cô vui lòng kiểm tra và điều chỉnh các tiết bị trùng.`);
+        } else {
+          alert(`✅ Đã nhập thành công toàn bộ Thời khóa biểu đã chỉnh sửa từ Excel!\n📊 Tổng cộng: ${result.data.length} phân công chuyên môn đã được tự động tính toán và đồng bộ vào hệ thống.`);
+        }
+      } else {
+        setData(result.data);
+        alert(`✅ Đã nhập thành công ${result.data.length} dòng dữ liệu phân công! Đang tự động xếp thời khóa biểu tối ưu...`);
+        handleGenerate(result.data);
+      }
+    } catch (err: any) {
+      alert(typeof err === 'string' ? err : (err?.message || 'Lỗi khi đọc file Excel.'));
       setIsGenerating(false);
     }
   };
@@ -440,10 +457,10 @@ function App() {
             <button 
               onClick={handleImportClick}
               className="flex items-center gap-2 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded shadow transition-colors text-sm font-medium"
-              title="Nhập file Excel chứa cột: Lớp, Môn, Giáo viên, Số tiết"
+              title="Nhập file Excel: Tự động nhận diện file Thời khóa biểu đã chỉnh sửa (Sheet TKB Lớp) hoặc Bảng phân công môn học"
             >
               <IconImport />
-              Nhập Excel
+              Nhập Excel (TKB / Phân công)
             </button>
             <button
               onClick={() => {
