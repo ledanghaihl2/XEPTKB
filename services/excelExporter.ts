@@ -63,7 +63,11 @@ export const exportScheduleToExcel = (schedule: TimetableGrid, rawData: InputRow
   const mainTkbBorders = new Set<number>();
   let currentRowIdx = 0; // Header is row 0
 
+  // Lưu vị trí hàng (1-based Excel row number) của từng (day, period) trong sheet "TKB Lớp"
+  const slotRowMap: Record<number, Record<number, number>> = {};
+
   DAYS.forEach((day, dIdx) => {
+    slotRowMap[dIdx] = {};
     let dayPrinted = false;
     let validPeriodsCount = PERIODS.filter((_, pIdx) => isValidSlot(dIdx, pIdx)).length;
     let periodsPrinted = 0;
@@ -75,6 +79,9 @@ export const exportScheduleToExcel = (schedule: TimetableGrid, rawData: InputRow
       dayPrinted = true;
       periodsPrinted++;
       currentRowIdx++;
+
+      // Lưu dòng Excel chính xác (Dòng 1 là Tiêu đề, các tiết bắt đầu từ dòng 2)
+      slotRowMap[dIdx][pIdx] = currentRowIdx + 1;
 
       if (periodsPrinted === validPeriodsCount) {
          mainTkbBorders.add(currentRowIdx);
@@ -99,6 +106,13 @@ export const exportScheduleToExcel = (schedule: TimetableGrid, rawData: InputRow
 
   XLSX.utils.book_append_sheet(wb, wsTKB, "TKB Lớp");
 
+  // Các dải ô chuẩn trong sheet 'TKB Lớp' để làm công thức liên kết động
+  const firstClassCol = XLSX.utils.encode_col(2); // Cột C (Lớp đầu tiên)
+  const lastClassCol = XLSX.utils.encode_col(2 + CLASSES.length - 1); // Cột lớp cuối cùng
+  const classHeaderRange = `'TKB Lớp'!$${firstClassCol}$1:$${lastClassCol}$1`;
+  const maxTkbRow = currentRowIdx + 1;
+  const fullTkbGridRange = `'TKB Lớp'!$${firstClassCol}$2:$${lastClassCol}$${maxTkbRow}`;
+
   // Find all unique teachers
   const allTeachers = Array.from(new Set(rawData.map(r => r.teacher))).sort();
 
@@ -119,11 +133,7 @@ export const exportScheduleToExcel = (schedule: TimetableGrid, rawData: InputRow
 
     wsDataTKB_Teacher.push(['Tiết / Thứ', ...DAYS]);
     
-    PERIODS.forEach((period, pIdx) => {
-      const isRowValid = DAYS.some((_, dIdx) => isValidSlot(dIdx, pIdx));
-      if (!isRowValid) return;
-
-      const row: any[] = [period];
+    PERIODS.forEach((period, pIdx) => {      const row: any[] = [period];
       DAYS.forEach((day, dIdx) => {
         if (!isValidSlot(dIdx, pIdx)) {
             row.push('--'); // BLOCKED SLOT
@@ -138,7 +148,21 @@ export const exportScheduleToExcel = (schedule: TimetableGrid, rawData: InputRow
              break;
           }
         }
-        row.push(found);
+
+        const targetRow = slotRowMap[dIdx]?.[pIdx];
+        if (targetRow) {
+          const rowRange = `'TKB Lớp'!$${firstClassCol}$${targetRow}:$${lastClassCol}$${targetRow}`;
+          // Công thức Excel: Dò tìm cột lớp trong dòng tiết tương ứng của 'TKB Lớp' chứa tên giáo viên này.
+          // Tự động cập nhật Tên lớp & Môn học khi Thầy/Cô chỉnh sửa ô tại sheet 'TKB Lớp'.
+          const formula = `IFERROR(INDEX(${classHeaderRange}, MATCH("*${teacher}*", ${rowRange}, 0)) & CHAR(10) & "(" & TRIM(LEFT(INDEX(${rowRange}, MATCH("*${teacher}*", ${rowRange}, 0)), SEARCH("(", INDEX(${rowRange}, MATCH("*${teacher}*", ${rowRange}, 0)) & "(") - 1)) & ")", "")`;
+          row.push({
+            t: 's',
+            v: found,
+            f: formula
+          });
+        } else {
+          row.push(found);
+        }
       });
       wsDataTKB_Teacher.push(row);
     });
@@ -224,6 +248,9 @@ export const exportScheduleToExcel = (schedule: TimetableGrid, rawData: InputRow
     
     wsDataTKB_Class.push(['Tiết / Thứ', ...DAYS]);
     
+    // Cột của lớp này trong sheet 'TKB Lớp'
+    const clsColLetter = XLSX.utils.encode_col(2 + CLASSES.indexOf(cls));
+
     PERIODS.forEach((period, pIdx) => {
       const isRowValid = DAYS.some((_, dIdx) => isValidSlot(dIdx, pIdx));
       if (!isRowValid) return;
@@ -236,10 +263,19 @@ export const exportScheduleToExcel = (schedule: TimetableGrid, rawData: InputRow
         }
 
         const session = schedule[cls]?.[dIdx]?.[pIdx];
-        if (session) {
-           row.push(`${session.subject}\n(${session.teacher})`);
+        const initialVal = session ? `${session.subject}\n(${session.teacher})` : '';
+        const targetRow = slotRowMap[dIdx]?.[pIdx];
+
+        if (targetRow) {
+          // Công thức Excel: Trực tiếp lấy ô tương ứng từ sheet 'TKB Lớp'
+          // Khi Thầy/Cô chỉnh sửa ô ở 'TKB Lớp', ô tại 'TKB Từng lớp' sẽ tự động cập nhật ngay lập tức!
+          row.push({
+            t: 's',
+            v: initialVal,
+            f: `IF('TKB Lớp'!${clsColLetter}${targetRow}="","",'TKB Lớp'!${clsColLetter}${targetRow})`
+          });
         } else {
-           row.push('');
+          row.push(initialVal);
         }
       });
       wsDataTKB_Class.push(row);
@@ -318,7 +354,7 @@ export const exportScheduleToExcel = (schedule: TimetableGrid, rawData: InputRow
     statsTeacher[row.teacher].classes.add(row.className);
   });
 
-  const wsDataTeacher: (string | number)[][] = [
+  const wsDataTeacher: any[][] = [
     ['STT', 'Tên giáo viên', 'Môn', 'Tổng tiết/tuần', 'Số lớp dạy', 'Ghi chú']
   ];
   Object.entries(statsTeacher).forEach(([name, data], idx) => {
@@ -326,7 +362,11 @@ export const exportScheduleToExcel = (schedule: TimetableGrid, rawData: InputRow
       idx + 1,
       name,
       Array.from(data.subjects).join(', '),
-      data.total,
+      {
+        t: 'n',
+        v: data.total,
+        f: `COUNTIF(${fullTkbGridRange}, "*${name}*")`
+      },
       data.classes.size,
       ''
     ]);
@@ -337,7 +377,7 @@ export const exportScheduleToExcel = (schedule: TimetableGrid, rawData: InputRow
   XLSX.utils.book_append_sheet(wb, wsTeacher, "TK Giáo viên");
 
   // --- SHEET 3: THỐNG KÊ LỚP ---
-  const wsDataClass: (string | number)[][] = [
+  const wsDataClass: any[][] = [
     ['STT', 'Lớp', 'Tổng tiết/tuần', 'Số môn học', 'Ghi chú']
   ];
   CLASSES.forEach((cls, idx) => {
@@ -353,15 +393,19 @@ export const exportScheduleToExcel = (schedule: TimetableGrid, rawData: InputRow
         });
       });
     }
+    const clsColLetter = XLSX.utils.encode_col(2 + idx);
     wsDataClass.push([
       idx + 1,
       cls,
-      total,
+      {
+        t: 'n',
+        v: total,
+        f: `COUNTIF('TKB Lớp'!$${clsColLetter}$2:$${clsColLetter}$${maxTkbRow}, "<>")`
+      },
       subjects.size,
       total === 0 ? 'Chưa xếp' : ''
     ]);
   });
-  const wsClass = XLSX.utils.aoa_to_sheet(wsDataClass);
   applySheetStyles(wsClass);
   wsClass['!cols'] = [{wch: 5}, {wch: 15}, {wch: 15}, {wch: 15}, {wch: 15}];
   XLSX.utils.book_append_sheet(wb, wsClass, "TK Lớp");
