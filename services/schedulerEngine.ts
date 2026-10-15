@@ -208,12 +208,260 @@ function checkClassHasGaps(grid: TimetableGrid, className: string, day: number):
 }
 
 /**
- * GIAI ĐOẠN 1: Tạo bảng Thời khóa biểu hợp lệ ban đầu (Constructive Heuristic với MRV)
+ * Kiểm tra xem giáo viên có bận ở slot (d, p) không (dạy ở lớp khác hoặc theo ràng buộc TEACHER_BUSY)
+ */
+function isTeacherBusyAt(
+  grid: TimetableGrid,
+  teacher: string,
+  d: number,
+  p: number,
+  teacherBusySet: Set<string>,
+  excludeClass: string | null = null
+): boolean {
+  if (teacherBusySet.has(`${teacher}_${d}_${p}`)) return true;
+  for (const cls of CLASSES) {
+    if (cls === excludeClass) continue;
+    if (grid[cls]?.[d]?.[p]?.teacher === teacher) return true;
+  }
+  return false;
+}
+
+/**
+ * Kiểm tra một tiết học có thể đặt vào slot (d, p) của lớp cls không
+ */
+function canPlaceInSlot(
+  grid: TimetableGrid,
+  cls: string,
+  d: number,
+  p: number,
+  subject: string,
+  teacher: string,
+  teacherBusySet: Set<string>,
+  fixedSlots: Set<string>,
+  allowGap = false
+): boolean {
+  if (!isValidSlot(d, p)) return false;
+  if (fixedSlots.has(`${cls}_${d}_${p}`)) return false;
+  if (grid[cls]?.[d]?.[p] !== null) return false;
+
+  // Giáo viên có bận ở ô này không
+  if (isTeacherBusyAt(grid, teacher, d, p, teacherBusySet, cls)) return false;
+
+  // Kiểm tra giới hạn số tiết cùng môn trong ngày (Toán/Văn tối đa 2, môn khác tối đa 1)
+  let countSameToday = 0;
+  for (let period = 0; period < PERIODS.length; period++) {
+    if (grid[cls]?.[d]?.[period]?.subject === subject) countSameToday++;
+  }
+  const maxPerDay = (subject === 'Toán' || subject === 'Ngữ văn') ? 2 : 1;
+  if (countSameToday >= maxPerDay) return false;
+
+  // Ràng buộc GDTC không học tiết 4 sáng hoặc tiết 3 chiều
+  if (subject === 'GDTC' && (p === 4 || p === 7)) return false;
+
+  // Kiểm tra lỗ lủng tiết học sinh
+  if (!allowGap) {
+    grid[cls][d][p] = { day: d, period: p, subject, teacher };
+    const hasGap = checkClassHasGaps(grid, cls, d);
+    grid[cls][d][p] = null;
+    if (hasGap) return false;
+  }
+
+  return true;
+}
+
+/**
+ * Thuật toán Chuỗi đẩy dời (Ejection Chain / Kempe Swaps):
+ * Khi một tiết bị kẹt (unassigned), quét tìm các ô có thể nhận tiết này nếu dời tiết hiện hữu
+ * sang ô trống hợp lệ khác trong cùng lớp hoặc hoán đổi giáo viên giữa các lớp.
+ */
+function resolveUnassignedWithEjectionChain(
+  grid: TimetableGrid,
+  unassignedList: InputRow[],
+  teacherBusySet: Set<string>,
+  fixedSlots: Set<string>
+): InputRow[] {
+  let remainingUnassigned = [...unassignedList];
+  let progress = true;
+
+  while (remainingUnassigned.length > 0 && progress) {
+    progress = false;
+    const stillUnassigned: InputRow[] = [];
+
+    for (const item of remainingUnassigned) {
+      const cls = item.className;
+      const subj = item.subject;
+      const teacher = item.teacher;
+      let placed = false;
+
+      // Bước 1: Tìm ô trống trực tiếp
+      for (let d = 0; d < DAYS.length && !placed; d++) {
+        for (let p = 0; p < PERIODS.length && !placed; p++) {
+          if (canPlaceInSlot(grid, cls, d, p, subj, teacher, teacherBusySet, fixedSlots, false)) {
+            grid[cls][d][p] = { day: d, period: p, subject: subj, teacher };
+            placed = true;
+            progress = true;
+            break;
+          }
+        }
+      }
+
+      if (placed) continue;
+
+      // Bước 2: Ejection Chain Cấp 1 (Single Ejection Swap trong cùng lớp)
+      // Dời tiết đang chiếm ô (d, p) sang một ô trống khác (d_new, p_new) của lớp cls
+      for (let d = 0; d < DAYS.length && !placed; d++) {
+        for (let p = 0; p < PERIODS.length && !placed; p++) {
+          if (!isValidSlot(d, p)) continue;
+          if (fixedSlots.has(`${cls}_${d}_${p}`)) continue;
+          const occupier = grid[cls]?.[d]?.[p];
+          if (!occupier) continue;
+
+          // Kiểm tra xem giáo viên của tiết kẹt có rảnh ở (d, p) không
+          if (isTeacherBusyAt(grid, teacher, d, p, teacherBusySet, cls)) continue;
+
+          // Kiểm tra số tiết môn subj trong ngày d nếu thay thế occupier
+          let countSameToday = 0;
+          for (let period = 0; period < PERIODS.length; period++) {
+            if (period === p) continue;
+            if (grid[cls]?.[d]?.[period]?.subject === subj) countSameToday++;
+          }
+          const maxPerDay = (subj === 'Toán' || subj === 'Ngữ văn') ? 2 : 1;
+          if (countSameToday >= maxPerDay) continue;
+
+          if (subj === 'GDTC' && (p === 4 || p === 7)) continue;
+
+          // Thử tạm thời gỡ occupier để tìm vị trí mới
+          const origOccupier = occupier;
+          grid[cls][d][p] = null;
+
+          let foundAlternative = false;
+          for (let d_new = 0; d_new < DAYS.length && !foundAlternative; d_new++) {
+            for (let p_new = 0; p_new < PERIODS.length && !foundAlternative; p_new++) {
+              if (d_new === d && p_new === p) continue;
+              if (canPlaceInSlot(grid, cls, d_new, p_new, origOccupier.subject, origOccupier.teacher, teacherBusySet, fixedSlots, false)) {
+                // Thử đặt
+                grid[cls][d_new][p_new] = { day: d_new, period: p_new, subject: origOccupier.subject, teacher: origOccupier.teacher };
+                grid[cls][d][p] = { day: d, period: p, subject: subj, teacher };
+
+                if (!checkClassHasGaps(grid, cls, d) && !checkClassHasGaps(grid, cls, d_new)) {
+                  foundAlternative = true;
+                } else {
+                  // Hoàn tác
+                  grid[cls][d_new][p_new] = null;
+                  grid[cls][d][p] = null;
+                }
+              }
+            }
+          }
+
+          if (foundAlternative) {
+            placed = true;
+            progress = true;
+            break;
+          } else {
+            // Khôi phục lại trạng thái cũ
+            grid[cls][d][p] = origOccupier;
+          }
+        }
+      }
+
+      if (placed) continue;
+
+      // Bước 3: Ejection Chain Cấp 2 (Cross-Class Teacher Swap)
+      // Nếu giáo viên `teacher` đang bận ở lớp khác tại (d, p), thử dời tiết của lớp đó sang ô trống khác
+      for (let d = 0; d < DAYS.length && !placed; d++) {
+        for (let p = 0; p < PERIODS.length && !placed; p++) {
+          if (!isValidSlot(d, p)) continue;
+          if (grid[cls]?.[d]?.[p] !== null) continue; // ô của cls phải đang trống
+          if (fixedSlots.has(`${cls}_${d}_${p}`)) continue;
+
+          // Kiểm tra xem cls có nhận được môn subj vào (d, p) không nếu teacher rảnh
+          let countSameToday = 0;
+          for (let period = 0; period < PERIODS.length; period++) {
+            if (grid[cls]?.[d]?.[period]?.subject === subj) countSameToday++;
+          }
+          const maxPerDay = (subj === 'Toán' || subj === 'Ngữ văn') ? 2 : 1;
+          if (countSameToday >= maxPerDay) continue;
+          if (subj === 'GDTC' && (p === 4 || p === 7)) continue;
+
+          // Tìm lớp khác đang học giáo viên `teacher` tại (d, p)
+          let conflictingClass: string | null = null;
+          for (const otherCls of CLASSES) {
+            if (otherCls === cls) continue;
+            if (grid[otherCls]?.[d]?.[p]?.teacher === teacher) {
+              conflictingClass = otherCls;
+              break;
+            }
+          }
+
+          if (!conflictingClass) continue;
+          if (fixedSlots.has(`${conflictingClass}_${d}_${p}`)) continue;
+
+          const otherSession = grid[conflictingClass][d][p];
+          if (!otherSession) continue;
+
+          grid[conflictingClass][d][p] = null; // thử tạm gỡ
+
+          let movedOther = false;
+          for (let d2 = 0; d2 < DAYS.length && !movedOther; d2++) {
+            for (let p2 = 0; p2 < PERIODS.length && !movedOther; p2++) {
+              if (d2 === d && p2 === p) continue;
+              if (canPlaceInSlot(grid, conflictingClass, d2, p2, otherSession.subject, otherSession.teacher, teacherBusySet, fixedSlots, false)) {
+                grid[conflictingClass][d2][p2] = { day: d2, period: p2, subject: otherSession.subject, teacher: otherSession.teacher };
+                grid[cls][d][p] = { day: d, period: p, subject: subj, teacher };
+
+                if (!checkClassHasGaps(grid, cls, d) &&
+                    !checkClassHasGaps(grid, conflictingClass, d) &&
+                    !checkClassHasGaps(grid, conflictingClass, d2)) {
+                  movedOther = true;
+                } else {
+                  grid[conflictingClass][d2][p2] = null;
+                  grid[cls][d][p] = null;
+                }
+              }
+            }
+          }
+
+          if (movedOther) {
+            placed = true;
+            progress = true;
+            break;
+          } else {
+            grid[conflictingClass][d][p] = otherSession;
+          }
+        }
+      }
+
+      if (!placed) {
+        stillUnassigned.push(item);
+      }
+    }
+
+    remainingUnassigned = stillUnassigned;
+  }
+
+  return remainingUnassigned;
+}
+
+/**
+ * GIAI ĐOẠN 1: Tạo bảng Thời khóa biểu ban đầu với MRV + Ejection Chain
  */
 function generateInitialGrid(data: InputRow[], constraints: Constraint[] = []) {
   let bestGrid: TimetableGrid = {};
   let minUnplaced = Infinity;
   let bestUnassigned: InputRow[] = [];
+
+  const fixedSlots = new Set<string>();
+  const teacherBusySet = new Set<string>();
+
+  constraints.forEach(c => {
+    if (c.type === 'FIXED_SESSION' && c.className && c.day !== undefined && c.period !== undefined) {
+      fixedSlots.add(`${c.className}_${c.day}_${c.period}`);
+    }
+    if (c.type === 'TEACHER_BUSY' && c.teacher && c.day !== undefined && c.period !== undefined) {
+      teacherBusySet.add(`${c.teacher}_${c.day}_${c.period}`);
+    }
+  });
 
   const baseOrderedSlots: { d: number; p: number }[] = [];
   for (let p = 0; p < PERIODS.length; p++) {
@@ -224,8 +472,8 @@ function generateInitialGrid(data: InputRow[], constraints: Constraint[] = []) {
     }
   }
 
-  // Khởi động Monte Carlo restarts (120 vòng lặp)
-  for (let iter = 0; iter < 120; iter++) {
+  // Khởi động tối đa 80 vòng lặp Monte Carlo Heuristic thông minh
+  for (let iter = 0; iter < 80; iter++) {
     const grid: TimetableGrid = {};
     CLASSES.forEach((cls) => {
       grid[cls] = Array(DAYS.length)
@@ -280,17 +528,10 @@ function generateInitialGrid(data: InputRow[], constraints: Constraint[] = []) {
     });
 
     const classSubjectTodayCount: Record<string, Record<number, Record<string, number>>> = {};
-    const morningBlocked: Record<string, Record<number, boolean>> = {};
-    const afternoonBlocked: Record<string, Record<number, boolean>> = {};
-
     CLASSES.forEach(cls => {
       classSubjectTodayCount[cls] = {};
-      morningBlocked[cls] = {};
-      afternoonBlocked[cls] = {};
       for (let d = 0; d < DAYS.length; d++) {
         classSubjectTodayCount[cls][d] = {};
-        morningBlocked[cls][d] = false;
-        afternoonBlocked[cls][d] = false;
       }
     });
 
@@ -305,7 +546,13 @@ function generateInitialGrid(data: InputRow[], constraints: Constraint[] = []) {
       }
     });
 
-    // Xáo trộn nhẹ các ngày trong từng lớp tiết học
+    // Sắp xếp các lớp theo số tiết cần xếp giảm dần (MRV: Lớp nặng tải xếp trước)
+    const sortedClasses = [...CLASSES].sort((a, b) => {
+      const sumA = needs[a].reduce((acc, n) => acc + n.remaining, 0);
+      const sumB = needs[b].reduce((acc, n) => acc + n.remaining, 0);
+      return (sumB + (Math.random() - 0.5)) - sumA;
+    });
+
     const runOrderedSlots: typeof baseOrderedSlots = [];
     for (let p = 0; p < PERIODS.length; p++) {
       const slotsInP = baseOrderedSlots.filter(s => s.p === p);
@@ -316,33 +563,37 @@ function generateInitialGrid(data: InputRow[], constraints: Constraint[] = []) {
     for (const slot of runOrderedSlots) {
       const { d, p } = slot;
       const isMorning = p < 5;
-      const shuffledClasses = [...CLASSES].sort(() => Math.random() - 0.5);
 
-      for (const cls of shuffledClasses) {
+      for (const cls of sortedClasses) {
         if (grid[cls][d][p] !== null) continue;
-
-        if (isMorning && morningBlocked[cls][d]) continue;
-        if (!isMorning && afternoonBlocked[cls][d]) continue;
 
         const validNeeds = needs[cls].filter(need => {
           if (need.remaining <= 0) return false;
           if (teacherBusy[d][p].has(need.teacher)) return false;
 
           const currentCount = classSubjectTodayCount[cls][d][need.subject] || 0;
-          // Cho phép môn Toán và Ngữ văn tối đa 2 tiết/ngày (tiết đôi), các môn khác tối đa 1 tiết/ngày
           const maxPerDay = (need.subject === 'Toán' || need.subject === 'Ngữ văn') ? 2 : 1;
           if (currentCount >= maxPerDay) return false;
 
           if (need.subject === 'GDTC' && (p === 4 || p === 7)) return false;
+
+          // Kiểm tra tính liên tục, không tạo lỗ lủng tiết
+          grid[cls][d][p] = { day: d, period: p, subject: need.subject, teacher: need.teacher };
+          const hasGap = checkClassHasGaps(grid, cls, d);
+          grid[cls][d][p] = null;
+          if (hasGap) return false;
+
           return true;
         });
 
         if (validNeeds.length > 0) {
-          // Ưu tiên chọn môn còn nhiều tiết nhất và môn học chính vào buổi sáng
           validNeeds.sort((a, b) => {
+            const aGDTCPriority = a.subject === 'GDTC' ? 3 : 0;
+            const bGDTCPriority = b.subject === 'GDTC' ? 3 : 0;
             const aMorningBonus = (isMorning && CORE_SUBJECTS.has(a.subject)) ? 2 : 0;
             const bMorningBonus = (isMorning && CORE_SUBJECTS.has(b.subject)) ? 2 : 0;
-            return (b.remaining + bMorningBonus + Math.random() * 0.2) - (a.remaining + aMorningBonus + Math.random() * 0.2);
+            return (b.remaining + bGDTCPriority + bMorningBonus + Math.random() * 0.3) -
+                   (a.remaining + aGDTCPriority + aMorningBonus + Math.random() * 0.3);
           });
 
           const picked = validNeeds[0];
@@ -355,36 +606,37 @@ function generateInitialGrid(data: InputRow[], constraints: Constraint[] = []) {
           picked.remaining--;
           teacherBusy[d][p].add(picked.teacher);
           classSubjectTodayCount[cls][d][picked.subject] = (classSubjectTodayCount[cls][d][picked.subject] || 0) + 1;
-        } else {
-          // Khóa nửa buổi này để học sinh không bị lủng tiết giữa buổi
-          if (isMorning) morningBlocked[cls][d] = true;
-          else afternoonBlocked[cls][d] = true;
         }
       }
     }
 
-    let unplacedCount = 0;
-    const runUnassigned: InputRow[] = [];
+    // Thu thập các tiết còn sót lại
+    const rawUnassigned: InputRow[] = [];
     let unassignedCounter = 1;
     CLASSES.forEach(cls => {
       needs[cls].forEach(need => {
-        if (need.remaining > 0) {
-          unplacedCount += need.remaining;
-          runUnassigned.push({
+        for (let rem = 0; rem < need.remaining; rem++) {
+          rawUnassigned.push({
             id: unassignedCounter++,
             className: cls,
             subject: need.subject,
             teacher: need.teacher,
-            sessionsPerWeek: need.remaining
+            sessionsPerWeek: 1
           });
         }
       });
     });
 
-    if (unplacedCount < minUnplaced) {
-      minUnplaced = unplacedCount;
-      bestGrid = grid;
-      bestUnassigned = runUnassigned;
+    // KÍCH HOẠT CHUỖI ĐẨY DỜI (EJECTION CHAIN) ĐỂ GIẢI CỨU 100% TIẾT KẸT
+    let finalUnassigned = rawUnassigned;
+    if (rawUnassigned.length > 0) {
+      finalUnassigned = resolveUnassignedWithEjectionChain(grid, rawUnassigned, teacherBusySet, fixedSlots);
+    }
+
+    if (finalUnassigned.length < minUnplaced) {
+      minUnplaced = finalUnassigned.length;
+      bestGrid = JSON.parse(JSON.stringify(grid));
+      bestUnassigned = finalUnassigned;
       if (minUnplaced === 0) break;
     }
   }
