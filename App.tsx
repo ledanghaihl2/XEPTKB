@@ -60,7 +60,20 @@ function App() {
   const [constraints, setConstraints] = useState<Constraint[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_CONSTRAINTS);
-      return saved ? JSON.parse(saved) : [];
+      if (!saved) return [];
+      const parsed: Constraint[] = JSON.parse(saved);
+      // Tự động làm sạch các bản ghi CLASS_SHIFT trùng lặp nếu có từ trước
+      const seen = new Set<string>();
+      const clean: Constraint[] = [];
+      for (let i = parsed.length - 1; i >= 0; i--) {
+        const c = parsed[i];
+        if (c.type === 'CLASS_SHIFT' && c.className) {
+          if (seen.has(c.className)) continue;
+          seen.add(c.className);
+        }
+        clean.unshift(c);
+      }
+      return clean;
     } catch {
       return [];
     }
@@ -285,12 +298,19 @@ function App() {
   };
 
   const handleAddConstraint = (c: Omit<Constraint, 'id'>) => {
-    const newConstraint = { ...c, id: Math.random().toString(36).substr(2, 9) };
-    setConstraints([...constraints, newConstraint]);
+    const newConstraint: Constraint = { ...c, id: Math.random().toString(36).substr(2, 9) };
+    setConstraints(prev => [...prev, newConstraint]);
   };
 
   const handleRemoveConstraint = (id: string) => {
-    setConstraints(constraints.filter(c => c.id !== id));
+    setConstraints(prev => prev.filter(c => c.id !== id));
+  };
+
+  const handleUpdateConstraints = (updater: Constraint[] | ((prev: Constraint[]) => Constraint[])) => {
+    setConstraints(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      return next;
+    });
   };
 
   const handlePrint = () => {
@@ -779,6 +799,7 @@ function App() {
               constraints={constraints}
               onAdd={handleAddConstraint}
               onRemove={handleRemoveConstraint}
+              onUpdateConstraints={handleUpdateConstraints}
               teachers={uniqueTeachers}
               classes={uniqueClasses}
               subjects={uniqueSubjects}

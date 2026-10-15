@@ -95,9 +95,9 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
       }
     }
 
-    // 2. Gán cho từng lớp: ưu tiên ràng buộc riêng, nếu không có thì kế thừa toàn trường
+    // 2. Gán cho từng lớp: ưu tiên ràng buộc riêng mới nhất, nếu không có thì kế thừa toàn trường
     classes.forEach(cls => {
-      const c = constraints.find(item => item.type === 'CLASS_SHIFT' && item.className === cls);
+      const c = [...constraints].reverse().find(item => item.type === 'CLASS_SHIFT' && item.className === cls);
       if (c) {
         let mDays: number[] = [];
         let aDays: number[] = [];
@@ -153,13 +153,13 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
       if (newMorningDays.includes(dayIdx)) {
         newMorningDays = newMorningDays.filter(d => d !== dayIdx);
       } else {
-        newMorningDays = [...newMorningDays, dayIdx].sort();
+        newMorningDays = [...newMorningDays, dayIdx].sort((a, b) => a - b);
       }
     } else {
       if (newAfternoonDays.includes(dayIdx)) {
         newAfternoonDays = newAfternoonDays.filter(d => d !== dayIdx);
       } else {
-        newAfternoonDays = [...newAfternoonDays, dayIdx].sort();
+        newAfternoonDays = [...newAfternoonDays, dayIdx].sort((a, b) => a - b);
       }
     }
 
@@ -640,39 +640,53 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
                           {/* Ô Sáng */}
                           <td 
                             onClick={() => handleToggleSlot(cls, dayIdx, true)}
-                            className={`p-2 border-r border-teal-100/50 text-center cursor-pointer select-none transition-colors ${
+                            className={`p-1.5 border-r border-teal-100/50 text-center cursor-pointer select-none transition-colors hover:bg-teal-100/70 ${
                               isMorningActive 
-                                ? 'bg-teal-50/80 hover:bg-teal-100/80' 
-                                : 'bg-transparent hover:bg-gray-100/60'
+                                ? 'bg-teal-50/80' 
+                                : 'bg-transparent'
                             }`}
                             title={`Click để ${isMorningActive ? 'Tắt' : 'Bật'} ca Sáng ${DAYS[dayIdx]} cho lớp ${cls}`}
                           >
-                            {isMorningActive ? (
-                              <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-teal-600 text-white font-bold text-xs shadow-2xs">
-                                ✓
-                              </span>
-                            ) : (
-                              <span className="text-gray-300 hover:text-gray-400 font-bold text-xs">—</span>
-                            )}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleSlot(cls, dayIdx, true);
+                              }}
+                              className={`w-7 h-7 rounded-lg inline-flex items-center justify-center font-bold text-xs transition-all shadow-2xs ${
+                                isMorningActive
+                                  ? 'bg-teal-600 text-white hover:bg-teal-700 active:scale-90 ring-1 ring-teal-500'
+                                  : 'text-gray-300 hover:text-gray-700 hover:bg-gray-100/80 border border-dashed border-gray-300'
+                              }`}
+                            >
+                              {isMorningActive ? '✓' : '—'}
+                            </button>
                           </td>
 
                           {/* Ô Chiều */}
                           <td 
                             onClick={() => handleToggleSlot(cls, dayIdx, false)}
-                            className={`p-2 border-r border-gray-200 text-center cursor-pointer select-none transition-colors ${
+                            className={`p-1.5 border-r border-gray-200 text-center cursor-pointer select-none transition-colors hover:bg-amber-100/70 ${
                               isAfternoonActive 
-                                ? 'bg-amber-50/80 hover:bg-amber-100/80' 
-                                : 'bg-transparent hover:bg-gray-100/60'
+                                ? 'bg-amber-50/80' 
+                                : 'bg-transparent'
                             }`}
                             title={`Click để ${isAfternoonActive ? 'Tắt' : 'Bật'} ca Chiều ${DAYS[dayIdx]} cho lớp ${cls}`}
                           >
-                            {isAfternoonActive ? (
-                              <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-amber-600 text-white font-bold text-xs shadow-2xs">
-                                ✓
-                              </span>
-                            ) : (
-                              <span className="text-gray-300 hover:text-gray-400 font-bold text-xs">—</span>
-                            )}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleSlot(cls, dayIdx, false);
+                              }}
+                              className={`w-7 h-7 rounded-lg inline-flex items-center justify-center font-bold text-xs transition-all shadow-2xs ${
+                                isAfternoonActive
+                                  ? 'bg-amber-600 text-white hover:bg-amber-700 active:scale-90 ring-1 ring-amber-500'
+                                  : 'text-gray-300 hover:text-gray-700 hover:bg-gray-100/80 border border-dashed border-gray-300'
+                              }`}
+                            >
+                              {isAfternoonActive ? '✓' : '—'}
+                            </button>
                           </td>
                         </React.Fragment>
                       );

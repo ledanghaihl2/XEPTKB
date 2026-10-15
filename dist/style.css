@@ -3086,12 +3086,22 @@
     --tw-ring-shadow: var(--tw-ring-inset,) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);
     box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
   }
+  .ring-1 {
+    --tw-ring-shadow: var(--tw-ring-inset,) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);
+    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
+  }
   .ring-2 {
     --tw-ring-shadow: var(--tw-ring-inset,) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color, currentcolor);
     box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
   }
   .ring-amber-400 {
     --tw-ring-color: var(--color-amber-400);
+  }
+  .ring-amber-500 {
+    --tw-ring-color: var(--color-amber-500);
+  }
+  .ring-teal-500 {
+    --tw-ring-color: var(--color-teal-500);
   }
   .\!outline {
     outline-style: var(--tw-outline-style) !important;
@@ -3319,6 +3329,14 @@
     .hover\:bg-amber-100:hover {
       background-color: var(--color-amber-100);
     }
+    .hover\:bg-amber-100\/70:hover {
+      background-color: color-mix(in srgb, oklch(96.2% 0.059 95.617) 70%, transparent);
+    }
+    @supports (color: color-mix(in lab, red, red)) {
+      .hover\:bg-amber-100\/70:hover {
+        background-color: color-mix(in oklab, var(--color-amber-100) 70%, transparent);
+      }
+    }
     .hover\:bg-amber-100\/80:hover {
       background-color: color-mix(in srgb, oklch(96.2% 0.059 95.617) 80%, transparent);
     }
@@ -3326,6 +3344,9 @@
       .hover\:bg-amber-100\/80:hover {
         background-color: color-mix(in oklab, var(--color-amber-100) 80%, transparent);
       }
+    }
+    .hover\:bg-amber-700:hover {
+      background-color: var(--color-amber-700);
     }
     .hover\:bg-blue-50:hover {
       background-color: var(--color-blue-50);
@@ -3357,6 +3378,14 @@
     @supports (color: color-mix(in lab, red, red)) {
       .hover\:bg-gray-100\/60:hover {
         background-color: color-mix(in oklab, var(--color-gray-100) 60%, transparent);
+      }
+    }
+    .hover\:bg-gray-100\/80:hover {
+      background-color: color-mix(in srgb, oklch(96.7% 0.003 264.542) 80%, transparent);
+    }
+    @supports (color: color-mix(in lab, red, red)) {
+      .hover\:bg-gray-100\/80:hover {
+        background-color: color-mix(in oklab, var(--color-gray-100) 80%, transparent);
       }
     }
     .hover\:bg-gray-200:hover {
@@ -3429,6 +3458,14 @@
     }
     .hover\:bg-teal-100:hover {
       background-color: var(--color-teal-100);
+    }
+    .hover\:bg-teal-100\/70:hover {
+      background-color: color-mix(in srgb, oklch(95.3% 0.051 180.801) 70%, transparent);
+    }
+    @supports (color: color-mix(in lab, red, red)) {
+      .hover\:bg-teal-100\/70:hover {
+        background-color: color-mix(in oklab, var(--color-teal-100) 70%, transparent);
+      }
     }
     .hover\:bg-teal-100\/80:hover {
       background-color: color-mix(in srgb, oklch(95.3% 0.051 180.801) 80%, transparent);
@@ -3576,6 +3613,12 @@
   }
   .focus-visible\:ring-blue-500:focus-visible {
     --tw-ring-color: var(--color-blue-500);
+  }
+  .active\:scale-90:active {
+    --tw-scale-x: 90%;
+    --tw-scale-y: 90%;
+    --tw-scale-z: 90%;
+    scale: var(--tw-scale-x) var(--tw-scale-y);
   }
   .active\:scale-95:active {
     --tw-scale-x: 95%;

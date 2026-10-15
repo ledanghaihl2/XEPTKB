@@ -7,6 +7,7 @@ interface Props {
   constraints: Constraint[];
   onAdd: (c: Omit<Constraint, 'id'>) => void;
   onRemove: (id: string) => void;
+  onUpdateConstraints?: (updater: Constraint[] | ((prev: Constraint[]) => Constraint[])) => void;
   teachers: string[];
   classes: string[];
   subjects: string[];
@@ -17,6 +18,7 @@ const ConstraintsEditor: React.FC<Props> = ({
   constraints, 
   onAdd, 
   onRemove,
+  onUpdateConstraints,
   teachers,
   classes,
   subjects,
@@ -37,8 +39,24 @@ const ConstraintsEditor: React.FC<Props> = ({
   const [afternoonDays, setAfternoonDays] = useState<number[]>([0, 1, 2, 3, 4]);
   const [applyScope, setApplyScope] = useState<string>('SINGLE');
 
-  // Xử lý cập nhật ca học nhanh từ Ma trận ca học toàn trường
+  // Xử lý cập nhật ca học nhanh từ Ma trận ca học toàn trường (Cập nhật nguyên tử 100%)
   const handleUpdateClassShift = (cls: string, mDays: number[], aDays: number[]) => {
+    if (onUpdateConstraints) {
+      onUpdateConstraints(prev => {
+        const filtered = prev.filter(c => !(c.type === 'CLASS_SHIFT' && c.className === cls));
+        return [
+          ...filtered,
+          {
+            id: 'cs_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+            type: 'CLASS_SHIFT',
+            className: cls,
+            morningDays: [...mDays],
+            afternoonDays: [...aDays]
+          }
+        ];
+      });
+      return;
+    }
     const existing = constraints.filter(c => c.type === 'CLASS_SHIFT' && c.className === cls);
     existing.forEach(item => onRemove(item.id));
     onAdd({
@@ -49,8 +67,23 @@ const ConstraintsEditor: React.FC<Props> = ({
     });
   };
 
-  // Xử lý cập nhật hàng loạt cho nhiều lớp (Áp dụng theo khối hoặc toàn trường)
+  // Xử lý cập nhật hàng loạt cho nhiều lớp (Áp dụng theo khối hoặc toàn trường - Cập nhật nguyên tử 100%)
   const handleBatchUpdateClassShifts = (targetClasses: string[], mDays: number[], aDays: number[]) => {
+    const targetSet = new Set(targetClasses);
+    if (onUpdateConstraints) {
+      onUpdateConstraints(prev => {
+        const filtered = prev.filter(c => !(c.type === 'CLASS_SHIFT' && targetSet.has(c.className || '')));
+        const additions: Constraint[] = targetClasses.map(cls => ({
+          id: 'cs_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+          type: 'CLASS_SHIFT',
+          className: cls,
+          morningDays: [...mDays],
+          afternoonDays: [...aDays]
+        }));
+        return [...filtered, ...additions];
+      });
+      return;
+    }
     targetClasses.forEach(cls => {
       const existing = constraints.filter(c => c.type === 'CLASS_SHIFT' && c.className === cls);
       existing.forEach(item => onRemove(item.id));
@@ -97,7 +130,22 @@ const ConstraintsEditor: React.FC<Props> = ({
         return;
       }
 
-      // Xóa cấu hình SCHOOL_SHIFT cũ nếu đã tồn tại để tránh trùng lặp
+      if (onUpdateConstraints) {
+        onUpdateConstraints(prev => {
+          const filtered = prev.filter(c => c.type !== 'SCHOOL_SHIFT');
+          return [
+            ...filtered,
+            {
+              id: 'ss_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+              type: 'SCHOOL_SHIFT',
+              morningDays: [...morningDays],
+              afternoonDays: [...afternoonDays]
+            }
+          ];
+        });
+        return;
+      }
+
       const existing = constraints.filter(c => c.type === 'SCHOOL_SHIFT');
       existing.forEach(item => onRemove(item.id));
 
@@ -122,14 +170,7 @@ const ConstraintsEditor: React.FC<Props> = ({
       else if (applyScope === 'GRADE_9') targetClasses = classes.filter(c => c.startsWith('9'));
       else if (applyScope === 'ALL_CLASSES') targetClasses = [...classes];
 
-      targetClasses.forEach(cls => {
-        onAdd({
-          type: 'CLASS_SHIFT',
-          className: cls,
-          morningDays: [...morningDays],
-          afternoonDays: [...afternoonDays],
-        });
-      });
+      handleBatchUpdateClassShifts(targetClasses, morningDays, afternoonDays);
       return;
     }
 
