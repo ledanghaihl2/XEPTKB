@@ -2,6 +2,7 @@ import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { TimetableGrid, InputRow } from '../types';
 import { CLASSES, DAYS, PERIODS, isValidSlot } from '../constants';
+import { validateOpenXmlArchive } from './openXmlValidator';
 
 // Declare XLSX globally as it is loaded via script tag
 declare global {
@@ -573,7 +574,18 @@ export const exportScheduleToExcel = async (schedule: TimetableGrid, rawData: In
         zip.remove('xl/calcChain.xml');
       }
 
-      // 7. Đóng gói lại thành Blob và kích hoạt tải về
+      // 7. Thẩm định tính toàn vẹn của tệp OpenXML (In-browser File Validator)
+      // Tự động kiểm tra tính hợp lệ của mọi file XML bên trong trước khi tải xuống
+      const report = await validateOpenXmlArchive(zip);
+      console.log(`[OpenXML Validator] Đã kiểm định ${report.checkedFilesCount} tệp trong ${report.durationMs}ms:`, report);
+
+      if (!report.isValid) {
+        console.warn('⚠️ Phát hiện vi phạm cấu trúc OpenXML, kích hoạt chế độ xuất chuẩn an toàn bảo toàn 100% dữ liệu:', report.errors);
+        XLSX.writeFile(wb, fileName);
+        return;
+      }
+
+      // 8. Đóng gói lại thành Blob và kích hoạt tải về
       const blob = await zip.generateAsync({
         type: 'blob',
         mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
