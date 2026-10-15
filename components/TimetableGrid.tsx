@@ -22,14 +22,14 @@ const TimetableGridDisplay: React.FC<Props> = ({ data, onEditCell }) => {
 
   const handleSave = () => {
     if (editingCell && onEditCell) {
-      onEditCell(editingCell.cls, editingCell.dayIdx, editingCell.periodIdx, editSubject, editTeacher);
+      onEditCell(editingCell.cls, editingCell.dayIdx, editingCell.periodIdx, editSubject.trim(), editTeacher.trim());
     }
     setEditingCell(null);
   };
 
   return (
     <div className="overflow-x-auto bg-white shadow rounded-lg p-4 relative">
-      <h2 className="text-xl font-bold mb-4 text-center uppercase text-primary">Thời khóa biểu lóp</h2>
+      <h2 className="text-xl font-bold mb-4 text-center uppercase text-primary">Thời khóa biểu tổng hợp các lớp</h2>
       <div className="border border-gray-300 min-w-[1200px]">
         <div className="grid grid-cols-[80px_100px_repeat(11,minmax(80px,1fr))] divide-x divide-gray-300 bg-primary text-white sticky top-0 z-10">
           <div className="font-bold p-2 text-center flex items-center justify-center">Thứ</div>

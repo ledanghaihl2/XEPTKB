@@ -116,8 +116,19 @@ export const exportScheduleToExcel = async (schedule: TimetableGrid, rawData: In
   const maxTkbRow = currentRowIdx + 1;
   const fullTkbGridRange = `'TKB Lớp'!$${firstClassCol}$2:$${lastClassCol}$${maxTkbRow}`;
 
-  // Find all unique teachers
-  const allTeachers = Array.from(new Set(rawData.map(r => r.teacher))).sort();
+  // Tìm tất cả giáo viên từ phân công gốc và thời khóa biểu thực tế
+  const teacherSet = new Set<string>();
+  rawData.forEach(r => { if (r.teacher && r.teacher.trim()) teacherSet.add(r.teacher.trim()); });
+  CLASSES.forEach(cls => {
+    schedule[cls]?.forEach(day => {
+      day?.forEach(session => {
+        if (session?.teacher && session.teacher.trim()) {
+          teacherSet.add(session.teacher.trim());
+        }
+      });
+    });
+  });
+  const allTeachers = Array.from(teacherSet).sort((a, b) => a.localeCompare(b, 'vi'));
 
   // --- SHEET 2: TKB GIÁO VIÊN ---
   const wsDataTKB_Teacher: any[][] = [];
@@ -136,7 +147,8 @@ export const exportScheduleToExcel = async (schedule: TimetableGrid, rawData: In
 
     wsDataTKB_Teacher.push(['Tiết / Thứ', ...DAYS]);
     
-    PERIODS.forEach((period, pIdx) => {      const row: any[] = [period];
+    PERIODS.forEach((period, pIdx) => {
+      const row: any[] = [period];
       DAYS.forEach((day, dIdx) => {
         if (!isValidSlot(dIdx, pIdx)) {
             row.push('--'); // BLOCKED SLOT
@@ -158,8 +170,8 @@ export const exportScheduleToExcel = async (schedule: TimetableGrid, rawData: In
           // Công thức Excel: Dò tìm cột lớp trong dòng tiết tương ứng của 'TKB Lớp' chứa tên giáo viên này.
           // Tự động kiểm tra nếu giáo viên bị xếp trùng từ 2 lớp trở lên trong cùng 1 tiết sẽ hiện cảnh báo TRÙNG.
           const conflictCount = `COUNTIF(${rowRange}, "*${teacher}*")`;
-          const baseFormula = `IFERROR(INDEX(${classHeaderRange}, MATCH("*${teacher}*", ${rowRange}, 0)) & CHAR(10) & "(" & TRIM(LEFT(INDEX(${rowRange}, MATCH("*${teacher}*", ${rowRange}, 0)), SEARCH("(", INDEX(${rowRange}, MATCH("*${teacher}*", ${rowRange}, 0)) & "(") - 1)) & ")", "")`;
-          const formula = `IF(${conflictCount}>1, "⚠️ TRÙNG " & ${conflictCount} & " LỚP!", ${baseFormula})`;
+          const baseFormula = `INDEX(${classHeaderRange}, MATCH("*${teacher}*", ${rowRange}, 0)) & CHAR(10) & "(" & TRIM(CLEAN(LEFT(INDEX(${rowRange}, MATCH("*${teacher}*", ${rowRange}, 0)), SEARCH("(", INDEX(${rowRange}, MATCH("*${teacher}*", ${rowRange}, 0)) & "(") - 1))) & ")"`;
+          const formula = `IF(${conflictCount}=0, "", IF(${conflictCount}>1, "⚠️ TRÙNG " & ${conflictCount} & " LỚP!", ${baseFormula}))`;
 
           row.push({
             t: 's',
@@ -545,7 +557,23 @@ export const exportScheduleToExcel = async (schedule: TimetableGrid, rawData: In
         zip.file('xl/worksheets/sheet2.xml', sheet2Xml);
       }
 
-      // 6. Đóng gói lại thành Blob và kích hoạt tải về
+      // 6. Cấu hình tự động tính toán lại toàn bộ công thức (Automatic Calculation)
+      // Bắt buộc Microsoft Excel phải tự động tính lại liên kết Sheet khi người dùng chỉnh sửa bất kỳ ô nào
+      let wbXml = await zip.file('xl/workbook.xml')?.async('string');
+      if (wbXml) {
+        const calcPrXml = '<calcPr calcId="191029" fullCalcOnLoad="1" forceFullCalc="1"/>';
+        if (wbXml.includes('<calcPr')) {
+          wbXml = wbXml.replace(/<calcPr[^>]*\/>/, calcPrXml);
+        } else if (wbXml.includes('</workbook>')) {
+          wbXml = wbXml.replace('</workbook>', calcPrXml + '</workbook>');
+        }
+        zip.file('xl/workbook.xml', wbXml);
+      }
+      if (zip.file('xl/calcChain.xml')) {
+        zip.remove('xl/calcChain.xml');
+      }
+
+      // 7. Đóng gói lại thành Blob và kích hoạt tải về
       const blob = await zip.generateAsync({
         type: 'blob',
         mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'

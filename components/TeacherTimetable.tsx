@@ -9,20 +9,24 @@ interface Props {
 const TeacherTimetable: React.FC<Props> = ({ schedule }) => {
   const [selectedTeacher, setSelectedTeacher] = useState<string>('Tất cả');
 
-  // Extract unique teachers from the schedule
+  // Trích xuất danh sách giáo viên duy nhất từ thời khóa biểu (đã trim và chuẩn hóa)
   const allTeachers = useMemo(() => {
-    const teachers = new Set<string>();
+    const teacherMap = new Map<string, string>();
     CLASSES.forEach(cls => {
       DAYS.forEach((_, dIdx) => {
         PERIODS.forEach((_, pIdx) => {
           const session = schedule[cls]?.[dIdx]?.[pIdx];
-          if (session && session.teacher) {
-            teachers.add(session.teacher);
+          if (session && session.teacher && session.teacher.trim()) {
+            const cleanName = session.teacher.trim();
+            const key = cleanName.toLowerCase();
+            if (!teacherMap.has(key)) {
+              teacherMap.set(key, cleanName);
+            }
           }
         });
       });
     });
-    return Array.from(teachers).sort();
+    return Array.from(teacherMap.values()).sort((a, b) => a.localeCompare(b, 'vi'));
   }, [schedule]);
 
   const displayTeachers = selectedTeacher === 'Tất cả' ? allTeachers : [selectedTeacher];
@@ -79,21 +83,28 @@ const TeacherTimetable: React.FC<Props> = ({ schedule }) => {
                         return <div key={day} className="bg-gray-200"></div>;
                     }
 
-                    let foundSession = null;
+                    const matchedSessions: { class: string; subject: string }[] = [];
                     for (const cls of CLASSES) {
                       const session = schedule[cls]?.[dIdx]?.[pIdx];
-                      if (session && session.teacher === teacher) {
-                        foundSession = { class: cls, subject: session.subject };
-                        break; // Teacher can only be in one class at a time
+                      if (session && session.teacher && session.teacher.trim().toLowerCase() === teacher.trim().toLowerCase()) {
+                        matchedSessions.push({ class: cls, subject: session.subject });
                       }
                     }
+
                     return (
                       <div key={day} className="p-2 text-sm flex flex-col justify-center min-h-[60px] hover:bg-blue-50 transition-colors text-center bg-white">
-                        {foundSession ? (
+                        {matchedSessions.length === 1 ? (
                           <>
-                            <span className="font-bold text-gray-800">{foundSession.class || ''}</span>
-                            <span className="text-gray-500">{foundSession.subject || ''}</span>
+                            <span className="font-bold text-gray-800">{matchedSessions[0].class || ''}</span>
+                            <span className="text-gray-500">{matchedSessions[0].subject || ''}</span>
                           </>
+                        ) : matchedSessions.length > 1 ? (
+                          <div className="bg-red-50 text-red-700 font-bold p-1 rounded border border-red-300 text-xs">
+                            <span className="text-red-600 font-bold block">⚠️ TRÙNG {matchedSessions.length} LỚP</span>
+                            <span className="text-[11px] font-medium text-gray-700 block mt-0.5">
+                              {matchedSessions.map(s => `${s.class} (${s.subject})`).join(', ')}
+                            </span>
+                          </div>
                         ) : (
                           <span className="text-gray-300">-</span>
                         )}

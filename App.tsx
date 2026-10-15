@@ -678,11 +678,14 @@ function App() {
                     newSchedule[className] = [...prev[className]];
                     newSchedule[className][day] = [...prev[className][day]];
                     
-                    if (!subject || subject.trim() === '') {
+                    const cleanSubject = subject ? subject.trim() : '';
+                    const cleanTeacher = teacher ? teacher.trim() : '';
+
+                    if (!cleanSubject) {
                       newSchedule[className][day][period] = null;
                     } else {
                       newSchedule[className][day][period] = {
-                         day, period, subject, teacher
+                         day, period, subject: cleanSubject, teacher: cleanTeacher
                       };
                     }
                     return newSchedule;
@@ -700,7 +703,28 @@ function App() {
 
           {activeTab === 'class_schedule' && (
             <div id="print-class-schedule">
-              <ClassTimetable schedule={schedule} />
+              <ClassTimetable 
+                schedule={schedule} 
+                onEditCell={(className, day, period, subject, teacher) => {
+                  setSchedule(prev => {
+                    const newSchedule = { ...prev };
+                    newSchedule[className] = [...prev[className]];
+                    newSchedule[className][day] = [...prev[className][day]];
+                    
+                    const cleanSubject = subject ? subject.trim() : '';
+                    const cleanTeacher = teacher ? teacher.trim() : '';
+
+                    if (!cleanSubject) {
+                      newSchedule[className][day][period] = null;
+                    } else {
+                      newSchedule[className][day][period] = {
+                         day, period, subject: cleanSubject, teacher: cleanTeacher
+                      };
+                    }
+                    return newSchedule;
+                  });
+                }}
+              />
             </div>
           )}
           

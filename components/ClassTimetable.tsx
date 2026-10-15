@@ -4,10 +4,29 @@ import { DAYS, PERIODS, CLASSES, isValidSlot } from '../constants';
 
 interface Props {
   schedule: TimetableGridType;
+  onEditCell?: (className: string, day: number, period: number, subject: string, teacher: string) => void;
 }
 
-const ClassTimetable: React.FC<Props> = ({ schedule }) => {
+const ClassTimetable: React.FC<Props> = ({ schedule, onEditCell }) => {
   const [selectedClass, setSelectedClass] = useState<string>('Tất cả');
+  const [editingCell, setEditingCell] = useState<{cls: string, dayIdx: number, periodIdx: number} | null>(null);
+  const [editSubject, setEditSubject] = useState("");
+  const [editTeacher, setEditTeacher] = useState("");
+
+  const handleCellClick = (cls: string, dayIdx: number, periodIdx: number) => {
+    if (!onEditCell) return;
+    const session = schedule[cls]?.[dayIdx]?.[periodIdx];
+    setEditingCell({ cls, dayIdx, periodIdx });
+    setEditSubject(session?.subject || "");
+    setEditTeacher(session?.teacher || "");
+  };
+
+  const handleSave = () => {
+    if (editingCell && onEditCell) {
+      onEditCell(editingCell.cls, editingCell.dayIdx, editingCell.periodIdx, editSubject.trim(), editTeacher.trim());
+    }
+    setEditingCell(null);
+  };
 
   const displayClasses = selectedClass === 'Tất cả' ? CLASSES : [selectedClass];
 
@@ -64,7 +83,11 @@ const ClassTimetable: React.FC<Props> = ({ schedule }) => {
 
                     const session = schedule[cls]?.[dIdx]?.[pIdx];
                     return (
-                      <div key={day} className="p-2 text-sm flex flex-col justify-center min-h-[60px] hover:bg-blue-50 transition-colors text-center bg-white">
+                      <div 
+                        key={day} 
+                        className={`p-2 text-sm flex flex-col justify-center min-h-[60px] transition-colors text-center bg-white ${onEditCell ? 'cursor-pointer hover:bg-blue-100' : 'hover:bg-blue-50'}`}
+                        onClick={() => handleCellClick(cls, dIdx, pIdx)}
+                      >
                         {session ? (
                           <>
                             <span className="font-bold text-gray-800">{session.subject || ''}</span>
@@ -82,6 +105,66 @@ const ClassTimetable: React.FC<Props> = ({ schedule }) => {
           </div>
         </div>
       ))}
+
+      {/* Modal Chỉnh sửa tiết học khi xem TKB từng lớp */}
+      {editingCell && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 print:hidden">
+          <div className="bg-white rounded-lg shadow-xl w-[400px] overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+              <h3 className="text-lg font-medium text-gray-900">
+                Chỉnh sửa: Lớp {editingCell.cls} - Thứ {editingCell.dayIdx + 2} - Tiết {editingCell.periodIdx + 1}
+              </h3>
+              <button 
+                onClick={() => setEditingCell(null)}
+                className="text-gray-400 hover:text-gray-500"
+              >
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-gray-500 mb-4">Để xóa tiết học này, hãy để trống Môn học.</p>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Môn học</label>
+                <input
+                  type="text"
+                  value={editSubject}
+                  onChange={(e) => setEditSubject(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
+                  placeholder="Ví dụ: Toán, Ngữ Văn..."
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Giáo viên</label>
+                <input
+                  type="text"
+                  value={editTeacher}
+                  onChange={(e) => setEditTeacher(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
+                  placeholder="Tên giáo viên"
+                />
+              </div>
+            </div>
+            <div className="px-6 py-3 bg-gray-50 text-right flex justify-end gap-3 rounded-b-lg">
+              <button
+                type="button"
+                className="px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+                onClick={() => setEditingCell(null)}
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                className="px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+                onClick={handleSave}
+              >
+                Lưu thay đổi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
