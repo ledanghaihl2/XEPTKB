@@ -630,47 +630,69 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
               <span>Áp dụng nhanh cấu hình Toàn trường</span>
             </button>
 
-            <span className="text-xs font-semibold text-gray-500 ml-1">Khối:</span>
-            
-            <div className="flex bg-white p-0.5 rounded-lg border border-gray-200 shadow-xs relative">
-              {['ALL', ...availableGrades].map(gr => {
-                const label = gr === 'ALL' ? `Tất cả (${classes.length})` : `Khối ${gr}`;
-                const active = selectedGrade === gr;
-                const isDropdownOpen = openBatchGrade === gr;
+            {/* Thanh trượt nhanh chọn nhanh theo Khối (Grade Scope Filter Toggle) */}
+            <div className="flex items-center gap-1.5 ml-1">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider hidden sm:inline-flex items-center gap-1">
+                <span>🎯</span>
+                <span>Khối:</span>
+              </span>
 
-                return (
-                  <div key={gr} className="relative inline-flex items-center">
-                    {/* Nút lọc khối */}
-                    <button
-                      type="button"
-                      onClick={() => setSelectedGrade(gr)}
-                      className={`px-2.5 py-1 text-xs font-medium transition-all ${
-                        active
-                          ? 'bg-primary text-white shadow-xs font-bold rounded-l-md'
-                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-l-md'
-                      }`}
-                    >
-                      {label}
-                    </button>
+              <div className="flex items-center bg-slate-100/90 p-1 rounded-xl border border-slate-200/90 shadow-inner relative gap-1">
+                {['ALL', ...availableGrades].map(gr => {
+                  const isAll = gr === 'ALL';
+                  const label = isAll ? 'Toàn trường' : `Khối ${gr}`;
+                  const count = getTargetClassesForGrade(gr).length;
+                  const active = selectedGrade === gr;
+                  const isDropdownOpen = openBatchGrade === gr;
 
-                    {/* Nút Dropdown thao tác nhanh trực tiếp trên Khối */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleOpenBatchMenu(gr);
-                      }}
-                      className={`px-1.5 py-1 text-[11px] font-bold border-l transition-colors rounded-r-md ${
-                        active
-                          ? 'bg-primary/95 text-amber-300 hover:bg-primary border-white/20'
-                          : 'text-amber-600 hover:text-amber-800 hover:bg-amber-50 border-gray-200'
-                      } ${isDropdownOpen ? 'bg-amber-100 text-amber-900 ring-2 ring-amber-400' : ''}`}
-                      title={`⚡ Áp dụng mẫu ca học nhanh cho ${gr === 'ALL' ? 'Toàn trường' : 'Khối ' + gr}`}
-                    >
-                      ⚡▾
-                    </button>
+                  return (
+                    <div key={gr} className="relative inline-flex items-center">
+                      {/* Nút Scope Pill */}
+                      <div
+                        className={`inline-flex items-center rounded-lg transition-all duration-200 ${
+                          active
+                            ? 'bg-teal-600 text-white shadow-sm ring-1 ring-teal-500/30 font-extrabold scale-[1.02]'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-white/90 font-medium'
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setSelectedGrade(gr)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs transition-all cursor-pointer select-none"
+                          title={`Lọc và thao tác nhanh cho ${label} (${count} lớp)`}
+                        >
+                          <span>{isAll ? '🏫' : '📚'}</span>
+                          <span>{label}</span>
+                          <span
+                            className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold transition-colors ${
+                              active
+                                ? 'bg-white/25 text-white'
+                                : 'bg-slate-200 text-slate-700'
+                            }`}
+                          >
+                            {count}
+                          </span>
+                        </button>
 
-                    {/* Menu Dropdown Thao Tác Nhanh (Gắn trực tiếp vào nút khối) */}
+                        {/* Nút dropdown thao tác nhanh mẫu ca học cho khối */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenBatchMenu(gr);
+                          }}
+                          className={`px-1.5 py-1.5 text-[11px] font-bold border-l transition-colors cursor-pointer rounded-r-lg ${
+                            active
+                              ? 'border-teal-500/40 text-amber-300 hover:bg-teal-700/60'
+                              : 'border-slate-200 text-amber-600 hover:text-amber-800 hover:bg-amber-100/50'
+                          } ${isDropdownOpen ? 'bg-amber-100 text-amber-900 ring-2 ring-amber-400' : ''}`}
+                          title={`⚡ Áp dụng mẫu ca học nhanh cho ${isAll ? 'Toàn trường' : 'Khối ' + gr}`}
+                        >
+                          ⚡▾
+                        </button>
+                      </div>
+
+                      {/* Menu Dropdown Thao Tác Nhanh (Gắn trực tiếp vào nút khối) */}
                     {isDropdownOpen && (
                       <div className="absolute top-full right-0 sm:left-0 sm:right-auto mt-2 z-50 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-gray-200 p-4 text-left">
                         {/* Header Dropdown */}
@@ -841,6 +863,7 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
                   </div>
                 );
               })}
+              </div>
             </div>
 
             {/* Nút In Ma trận */}
@@ -855,6 +878,26 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
             </button>
           </div>
         </div>
+
+        {/* Thanh chỉ báo ngữ cảnh khi chọn Khối (Grade Scope Active Banner) */}
+        {selectedGrade !== 'ALL' && (
+          <div className="flex items-center justify-between gap-2 mt-3 px-3 py-2 bg-teal-50/90 border border-teal-200/90 rounded-xl text-xs text-teal-950 shadow-2xs animate-fadeIn">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="w-5 h-5 rounded-md bg-teal-600 text-white flex items-center justify-center text-xs font-bold shadow-2xs">🔍</span>
+              <span className="font-bold">Đang xem & điều khiển: Khối {selectedGrade} ({filteredClasses.length} lớp)</span>
+              <span className="text-teal-700 text-[11px] hidden sm:inline">• Các thao tác tại hàng "Tích 1 lần" và nút "Cả ngày" sẽ áp dụng riêng cho {filteredClasses.length} lớp thuộc khối này.</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSelectedGrade('ALL')}
+              className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-800 hover:text-teal-950 bg-teal-100/90 hover:bg-teal-200 px-2.5 py-1 rounded-lg transition-colors cursor-pointer whitespace-nowrap shadow-2xs"
+              title="Nhấn để quay lại chế độ xem toàn bộ các lớp trong trường"
+            >
+              <span>Toàn trường ({classes.length} lớp)</span>
+              <span>✕</span>
+            </button>
+          </div>
+        )}
 
         {/* Chú giải (Legend) */}
         <div className="flex items-center gap-4 mt-3 pt-2.5 border-t border-gray-200/60 text-[11px] text-gray-600 flex-wrap">
