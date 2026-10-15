@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Constraint, ConstraintType, ShiftType, InputRow } from '../types';
 import { DAYS, PERIODS } from '../constants';
+import SchoolShiftMatrix from './SchoolShiftMatrix';
 
 interface Props {
   constraints: Constraint[];
@@ -21,6 +22,7 @@ const ConstraintsEditor: React.FC<Props> = ({
   subjects,
   data = []
 }) => {
+  const [activeView, setActiveView] = useState<'matrix' | 'form_list'>('matrix');
   const [type, setType] = useState<ConstraintType>('CLASS_SHIFT');
   const [selectedTeacher, setSelectedTeacher] = useState(teachers[0] || '');
   const [selectedClass, setSelectedClass] = useState(classes[0] || '');
@@ -34,6 +36,18 @@ const ConstraintsEditor: React.FC<Props> = ({
   const [morningDays, setMorningDays] = useState<number[]>([0, 1, 2, 3, 4]);
   const [afternoonDays, setAfternoonDays] = useState<number[]>([0, 1, 2, 3, 4]);
   const [applyScope, setApplyScope] = useState<string>('SINGLE');
+
+  // Xử lý cập nhật ca học nhanh từ Ma trận ca học toàn trường
+  const handleUpdateClassShift = (cls: string, mDays: number[], aDays: number[]) => {
+    const existing = constraints.filter(c => c.type === 'CLASS_SHIFT' && c.className === cls);
+    existing.forEach(item => onRemove(item.id));
+    onAdd({
+      type: 'CLASS_SHIFT',
+      className: cls,
+      morningDays: mDays,
+      afternoonDays: aDays
+    });
+  };
 
   // Tính tổng số tiết tối đa có thể xếp theo cấu hình ca/thứ này
   const currentCapacity = (morningDays.length * 5) + (afternoonDays.length * 3);
@@ -180,15 +194,68 @@ const ConstraintsEditor: React.FC<Props> = ({
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6 border-b pb-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 border-b pb-4">
         <div>
-          <h2 className="text-xl font-bold text-primary uppercase">Cấu hình Ràng buộc & Ca học theo Thứ</h2>
+          <h2 className="text-xl font-bold text-primary uppercase">Cấu hình Ràng buộc & Ca học Toàn trường</h2>
           <p className="text-xs text-gray-500 mt-0.5">Thiết lập chi tiết buổi sáng học thứ nào, buổi chiều học thứ nào cho từng lớp hoặc giáo viên</p>
         </div>
+
+        {/* Bộ chuyển đổi chế độ xem: Ma trận ca học <-> Biểu mẫu & Danh sách ràng buộc */}
+        <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200 shadow-xs self-start sm:self-auto">
+          <button
+            type="button"
+            onClick={() => setActiveView('matrix')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              activeView === 'matrix'
+                ? 'bg-primary text-white shadow-xs scale-[1.02]'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/70'
+            }`}
+          >
+            <span>📊</span>
+            <span>Ma trận ca học toàn trường</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveView('form_list')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              activeView === 'form_list'
+                ? 'bg-primary text-white shadow-xs scale-[1.02]'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/70'
+            }`}
+          >
+            <span>⚙️</span>
+            <span>Thiết lập & Danh sách ({constraints.length})</span>
+          </button>
+        </div>
       </div>
-      
-      {/* Form thêm ràng buộc */}
-      <div className="bg-gray-50 p-4 md:p-5 rounded-xl border border-gray-200 mb-8 shadow-sm">
+
+      {activeView === 'matrix' ? (
+        <div className="space-y-6">
+          <SchoolShiftMatrix 
+            classes={classes}
+            constraints={constraints}
+            data={data}
+            onUpdateClassShift={handleUpdateClassShift}
+          />
+          
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-teal-50/60 rounded-xl border border-teal-200">
+            <div className="flex items-center gap-2 text-xs text-teal-950">
+              <span className="text-base">💡</span>
+              <span>Cần thêm ràng buộc giáo viên bận, tiết cố định hoặc áp dụng mẫu đồng bộ cho toàn khối?</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveView('form_list')}
+              className="text-xs font-bold text-teal-800 hover:text-teal-950 underline flex items-center gap-1 self-start sm:self-auto"
+            >
+              Mở biểu mẫu thiết lập nâng cao ➔
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div>
+          {/* Form thêm ràng buộc */}
+          <div className="bg-gray-50 p-4 md:p-5 rounded-xl border border-gray-200 mb-8 shadow-sm">
         <h3 className="font-bold mb-4 text-gray-800 flex items-center gap-2 text-sm uppercase">
           <span className="w-2 h-2 rounded-full bg-primary"></span>
           Thêm ràng buộc mới
@@ -627,6 +694,8 @@ const ConstraintsEditor: React.FC<Props> = ({
               </div>
             );
           })}
+        </div>
+      )}
         </div>
       )}
     </div>
