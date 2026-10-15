@@ -14,7 +14,9 @@ import ConstraintsEditor from './components/ConstraintsEditor';
 import AddAssignmentModal from './components/AddAssignmentModal';
 import { VersionManagerModal } from './components/VersionManagerModal';
 import { SupabaseConfigModal } from './components/SupabaseConfigModal';
+import { GeminiAssistantModal } from './components/GeminiAssistantModal';
 import { isSupabaseConfigured } from './services/supabaseClient';
+import { isGeminiConfigured, getGeminiModel } from './services/geminiService';
 import {
   fetchAssignmentsSupabase,
   saveAssignmentsSupabase,
@@ -86,9 +88,25 @@ function App() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showVersionModal, setShowVersionModal] = useState(false);
   const [showSupabaseModal, setShowSupabaseModal] = useState(false);
+  const [showGeminiModal, setShowGeminiModal] = useState(false);
   const [isHasSupabase, setIsHasSupabase] = useState<boolean>(() => isSupabaseConfigured());
+  const [isHasGemini, setIsHasGemini] = useState<boolean>(() => isGeminiConfigured());
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleApplyParsedData = (newAssignments: InputRow[], newConstraints: Constraint[]) => {
+    let updatedData = [...data];
+    if (newAssignments.length > 0) {
+      updatedData = [...updatedData, ...newAssignments];
+      setData(updatedData);
+    }
+    let updatedConstraints = [...constraints];
+    if (newConstraints.length > 0) {
+      updatedConstraints = [...updatedConstraints, ...newConstraints];
+      setConstraints(updatedConstraints);
+    }
+    handleGenerate(updatedData);
+  };
 
   // Auto-sync state with Supabase Cloud DB on mount if configured
   useEffect(() => {
@@ -338,12 +356,31 @@ function App() {
                     ⚡ Supabase DB
                   </span>
                 )}
+                {isHasGemini && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-purple-500/25 text-purple-200 border border-purple-400/30" title={`Google AI Studio (${getGeminiModel()}) sẵn sàng`}>
+                    ✨ Gemini AI
+                  </span>
+                )}
               </div>
-              <p className="text-xs text-blue-100 opacity-80">Hệ thống xếp thời khóa biểu thông minh (Supabase Cloud + Offline PWA)</p>
+              <p className="text-xs text-blue-100 opacity-80">Hệ thống xếp thời khóa biểu thông minh (Google Gemini AI + Supabase Cloud + Offline PWA)</p>
             </div>
           </div>
           
           <div className="flex items-center gap-2 flex-wrap justify-center">
+             <button 
+              onClick={() => setShowGeminiModal(true)}
+              className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-purple-600 via-indigo-600 to-teal-600 hover:from-purple-700 hover:to-teal-700 text-white rounded shadow-md transition-all text-sm font-bold border border-white/20 animate-pulse hover:animate-none"
+              title="Mở Trợ lý AI Gemini 2.5 Pro (Cố vấn sư phạm, gỡ rối xung đột & bóc tách ngôn ngữ)"
+            >
+              <span className="text-base">✨</span>
+              Trợ lý AI Gemini
+              {unassigned.length > 0 && (
+                <span className="ml-1 bg-rose-500 text-white text-xs px-1.5 py-0.2 rounded-full font-bold">
+                  {unassigned.length} kẹt
+                </span>
+              )}
+            </button>
+
              <button 
               onClick={() => setShowSupabaseModal(true)}
               className="flex items-center gap-1.5 px-3 py-2 bg-emerald-800 hover:bg-emerald-900 border border-emerald-500/30 text-emerald-100 rounded shadow transition-colors text-sm font-medium"
@@ -649,6 +686,20 @@ function App() {
         isOpen={showSupabaseModal}
         onClose={() => setShowSupabaseModal(false)}
         onConnectedSuccess={() => setIsHasSupabase(isSupabaseConfigured())}
+      />
+
+      <GeminiAssistantModal
+        isOpen={showGeminiModal}
+        onClose={() => setShowGeminiModal(false)}
+        timetable={schedule}
+        unassigned={unassigned}
+        constraints={constraints}
+        rawData={data}
+        existingTeachers={uniqueTeachers}
+        existingClasses={uniqueClasses}
+        existingSubjects={uniqueSubjects}
+        onApplyParsedData={handleApplyParsedData}
+        onApiKeyUpdated={() => setIsHasGemini(isGeminiConfigured())}
       />
     </div>
   );
