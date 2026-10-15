@@ -174,7 +174,7 @@ function App() {
   }, [versions]);
 
   // Handlers for Version Management
-  const handleSaveCurrentVersion = (name: string) => {
+  const handleSaveCurrentVersion = (name: string, silent = false) => {
     const newVer: TimetableVersion = {
       id: 'ver_' + Date.now(),
       name,
@@ -189,7 +189,10 @@ function App() {
     if (isSupabaseConfigured()) {
       saveVersionSupabase(newVer);
     }
-    alert(`Đã lưu thành công phiên bản "${name}" vào ${isSupabaseConfigured() ? 'Supabase Database & LocalStorage' : 'LocalStorage'}!`);
+    if (!silent) {
+      alert(`Đã lưu thành công phiên bản "${name}" vào ${isSupabaseConfigured() ? 'Supabase Database & LocalStorage' : 'LocalStorage'}!`);
+    }
+    return newVer;
   };
 
   const handleLoadVersion = (version: TimetableVersion) => {
@@ -258,6 +261,10 @@ function App() {
 
   const handleResetSampleData = () => {
     if (window.confirm('Thầy/Cô có chắc chắn muốn khôi phục lại dữ liệu mẫu ban đầu? Toàn bộ phân công và ràng buộc đã nhập sẽ được đặt lại.')) {
+      if (data.length > 0 || Object.keys(schedule).length > 0) {
+        const timeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        handleSaveCurrentVersion(`[Tự động sao lưu] Trước khi khôi phục dữ liệu mẫu (${timeStr})`, true);
+      }
       setData(SAMPLE_DATA);
       setConstraints([]);
       localStorage.removeItem(STORAGE_KEY_DATA);
@@ -299,6 +306,20 @@ function App() {
       // Reset input để có thể chọn lại cùng 1 file nếu cần
       if (fileInputRef.current) fileInputRef.current.value = '';
 
+      // Tự động tạo "Phiên bản lưu trữ" (Auto-snapshot) trước khi nạp dữ liệu mới
+      const hasExistingData = data.length > 0 || Object.keys(schedule).length > 0;
+      let autoSaved = false;
+      if (hasExistingData) {
+        const timeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const snapshotName = `[Tự động sao lưu] Trước khi nhập "${file.name}" (${timeStr})`;
+        handleSaveCurrentVersion(snapshotName, true);
+        autoSaved = true;
+      }
+
+      const autoSaveNote = autoSaved
+        ? '\n\n🛡️ Bản TKB trước đó đã được tự động lưu vào mục "Quản lý phiên bản" để Thầy/Cô có thể hoàn tác (Undo) bất kỳ lúc nào!'
+        : '';
+
       if (result.mode === 'TIMETABLE_GRID' && result.schedule) {
         setSchedule(result.schedule);
         setData(result.data);
@@ -309,13 +330,13 @@ function App() {
         if (result.conflicts && result.conflicts.length > 0) {
           const conflictPreview = result.conflicts.slice(0, 4).join('\n• ');
           const extra = result.conflicts.length > 4 ? `\n... và ${result.conflicts.length - 4} vị trí trùng khác.` : '';
-          alert(`✅ Đã nhập thành công Thời khóa biểu từ Excel!\n📊 Tổng cộng: ${result.data.length} nhóm môn học được tự động tính toán và đồng bộ.\n\n⚠️ CẢNH BÁO TRÙNG LỊCH GIÁO VIÊN (${result.conflicts.length} tiết):\n• ${conflictPreview}${extra}\n\nThầy/Cô vui lòng kiểm tra và điều chỉnh các tiết bị trùng.`);
+          alert(`✅ Đã nhập thành công Thời khóa biểu từ Excel!\n📊 Tổng cộng: ${result.data.length} nhóm môn học được tự động tính toán và đồng bộ.\n\n⚠️ CẢNH BÁO TRÙNG LỊCH GIÁO VIÊN (${result.conflicts.length} tiết):\n• ${conflictPreview}${extra}\n\nThầy/Cô vui lòng kiểm tra và điều chỉnh các tiết bị trùng.${autoSaveNote}`);
         } else {
-          alert(`✅ Đã nhập thành công toàn bộ Thời khóa biểu đã chỉnh sửa từ Excel!\n📊 Tổng cộng: ${result.data.length} phân công chuyên môn đã được tự động tính toán và đồng bộ vào hệ thống.`);
+          alert(`✅ Đã nhập thành công toàn bộ Thời khóa biểu đã chỉnh sửa từ Excel!\n📊 Tổng cộng: ${result.data.length} phân công chuyên môn đã được tự động tính toán và đồng bộ vào hệ thống.${autoSaveNote}`);
         }
       } else {
         setData(result.data);
-        alert(`✅ Đã nhập thành công ${result.data.length} dòng dữ liệu phân công! Đang tự động xếp thời khóa biểu tối ưu...`);
+        alert(`✅ Đã nhập thành công ${result.data.length} dòng dữ liệu phân công! Đang tự động xếp thời khóa biểu tối ưu...${autoSaveNote}`);
         handleGenerate(result.data);
       }
     } catch (err: any) {

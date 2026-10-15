@@ -183,11 +183,17 @@ export const VersionManagerModal: React.FC<VersionManagerModalProps> = ({
                 {versions.map((v) => {
                   const classCount = Object.keys(v.schedule || {}).length;
                   const isEditing = editingId === v.id;
+                  const isAutoSnapshot = v.name.includes('[Tự động sao lưu]');
+                  const displayName = isAutoSnapshot ? v.name.replace('[Tự động sao lưu]', '').trim() : v.name;
 
                   return (
                     <div 
                       key={v.id} 
-                      className="bg-white border border-gray-200 hover:border-primary/50 rounded-lg p-4 shadow-sm hover:shadow transition-all flex flex-col md:flex-row justify-between items-start md:items-center gap-3"
+                      className={`border rounded-lg p-4 shadow-sm hover:shadow transition-all flex flex-col md:flex-row justify-between items-start md:items-center gap-3 ${
+                        isAutoSnapshot 
+                          ? 'bg-indigo-50/40 border-indigo-200/80 hover:border-indigo-400' 
+                          : 'bg-white border-gray-200 hover:border-primary/50'
+                      }`}
                     >
                       <div className="flex-grow">
                         {isEditing ? (
@@ -207,8 +213,13 @@ export const VersionManagerModal: React.FC<VersionManagerModalProps> = ({
                             </button>
                           </div>
                         ) : (
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-bold text-gray-900 text-sm">{v.name}</h4>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {isAutoSnapshot && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200">
+                                <span>🛡️</span> Tự động sao lưu
+                              </span>
+                            )}
+                            <h4 className="font-bold text-gray-900 text-sm">{displayName}</h4>
                             <button
                               onClick={() => handleStartRename(v)}
                               className="text-gray-400 hover:text-gray-600 text-xs"
