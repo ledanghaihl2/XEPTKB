@@ -96,6 +96,49 @@ const ConstraintsEditor: React.FC<Props> = ({
     });
   };
 
+  // Xử lý cập nhật nhanh ca học Toàn trường trực tiếp từ Ma trận (Cập nhật nguyên tử 100%)
+  const handleUpdateSchoolShift = (morningDays: number[], afternoonDays: number[], resetIndividualClasses: boolean = false) => {
+    if (onUpdateConstraints) {
+      onUpdateConstraints(prev => {
+        let filtered = prev.filter(c => c.type !== 'SCHOOL_SHIFT');
+        if (resetIndividualClasses) {
+          filtered = filtered.filter(c => c.type !== 'CLASS_SHIFT');
+        }
+        return [
+          ...filtered,
+          {
+            id: 'ss_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+            type: 'SCHOOL_SHIFT',
+            morningDays: [...morningDays],
+            afternoonDays: [...afternoonDays]
+          }
+        ];
+      });
+      return;
+    }
+    const existing = constraints.filter(c => c.type === 'SCHOOL_SHIFT');
+    existing.forEach(item => onRemove(item.id));
+    if (resetIndividualClasses) {
+      const classShifts = constraints.filter(c => c.type === 'CLASS_SHIFT');
+      classShifts.forEach(item => onRemove(item.id));
+    }
+    onAdd({
+      type: 'SCHOOL_SHIFT',
+      morningDays: [...morningDays],
+      afternoonDays: [...afternoonDays]
+    });
+  };
+
+  // Đưa tất cả các lớp có cấu hình cá biệt về kế thừa 100% ca toàn trường
+  const handleResetAllClassesToSchoolShift = () => {
+    if (onUpdateConstraints) {
+      onUpdateConstraints(prev => prev.filter(c => c.type !== 'CLASS_SHIFT'));
+      return;
+    }
+    const classShifts = constraints.filter(c => c.type === 'CLASS_SHIFT');
+    classShifts.forEach(item => onRemove(item.id));
+  };
+
   // Tính tổng số tiết tối đa có thể xếp theo cấu hình ca/thứ này
   const currentCapacity = (morningDays.length * 5) + (afternoonDays.length * 3);
 
@@ -315,6 +358,8 @@ const ConstraintsEditor: React.FC<Props> = ({
             data={data}
             onUpdateClassShift={handleUpdateClassShift}
             onBatchUpdateClassShifts={handleBatchUpdateClassShifts}
+            onUpdateSchoolShift={handleUpdateSchoolShift}
+            onResetAllClassesToSchoolShift={handleResetAllClassesToSchoolShift}
           />
           
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-teal-50/60 rounded-xl border border-teal-200">

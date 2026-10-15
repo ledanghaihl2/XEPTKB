@@ -8,6 +8,8 @@ interface Props {
   data: InputRow[];
   onUpdateClassShift?: (className: string, morningDays: number[], afternoonDays: number[]) => void;
   onBatchUpdateClassShifts?: (classes: string[], morningDays: number[], afternoonDays: number[]) => void;
+  onUpdateSchoolShift?: (morningDays: number[], afternoonDays: number[], resetIndividualClasses?: boolean) => void;
+  onResetAllClassesToSchoolShift?: () => void;
 }
 
 export const SchoolShiftMatrix: React.FC<Props> = ({
@@ -15,7 +17,9 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
   constraints,
   data,
   onUpdateClassShift,
-  onBatchUpdateClassShifts
+  onBatchUpdateClassShifts,
+  onUpdateSchoolShift,
+  onResetAllClassesToSchoolShift
 }) => {
   const [selectedGrade, setSelectedGrade] = useState<string>('ALL');
   
@@ -24,6 +28,12 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
   const [batchMorningDays, setBatchMorningDays] = useState<number[]>([0, 1, 2, 3, 4]);
   const [batchAfternoonDays, setBatchAfternoonDays] = useState<number[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // State quản lý Modal Áp Dụng Nhanh Ca Học Toàn Trường
+  const [isSchoolModalOpen, setIsSchoolModalOpen] = useState<boolean>(false);
+  const [modalMorningDays, setModalMorningDays] = useState<number[]>([0, 1, 2, 3, 4]);
+  const [modalAfternoonDays, setModalAfternoonDays] = useState<number[]>([]);
+  const [resetOverrides, setResetOverrides] = useState<boolean>(true);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -41,6 +51,17 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [openBatchGrade]);
+
+  // Tự động đóng modal ca học Toàn trường khi nhấn phím ESC
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isSchoolModalOpen) {
+        setIsSchoolModalOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSchoolModalOpen]);
 
   // Trích xuất danh sách Khối lớp tự động từ tên các lớp
   const availableGrades = useMemo(() => {
@@ -228,6 +249,53 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
     setOpenBatchGrade(null);
   };
 
+  // Danh sách các lớp có cấu hình ca học riêng (cá biệt)
+  const individualOverrideClasses = useMemo(() => {
+    const list: string[] = [];
+    classes.forEach(cls => {
+      const hasSpecific = constraints.some(c => c.type === 'CLASS_SHIFT' && c.className === cls);
+      if (hasSpecific) {
+        list.push(cls);
+      }
+    });
+    return list;
+  }, [classes, constraints]);
+
+  // Mở modal áp dụng nhanh ca học Toàn trường
+  const handleOpenSchoolShiftModal = () => {
+    if (schoolWideConstraint) {
+      setModalMorningDays(schoolWideConstraint.morningDays !== undefined ? [...schoolWideConstraint.morningDays] : [0, 1, 2, 3, 4]);
+      setModalAfternoonDays(schoolWideConstraint.afternoonDays !== undefined ? [...schoolWideConstraint.afternoonDays] : []);
+    } else {
+      setModalMorningDays([0, 1, 2, 3, 4]);
+      setModalAfternoonDays([]);
+    }
+    setResetOverrides(individualOverrideClasses.length > 0);
+    setIsSchoolModalOpen(true);
+  };
+
+  // Xác nhận áp dụng ca học Toàn trường từ modal
+  const handleApplySchoolShiftModal = () => {
+    if (onUpdateSchoolShift) {
+      onUpdateSchoolShift(modalMorningDays, modalAfternoonDays, resetOverrides);
+      setToastMessage(`Đã cập nhật ca học Toàn trường thành công (${classes.length} lớp)${resetOverrides && individualOverrideClasses.length > 0 ? ` và đã xóa ${individualOverrideClasses.length} lớp cá biệt` : ''}!`);
+      setTimeout(() => setToastMessage(null), 3500);
+    }
+    setIsSchoolModalOpen(false);
+  };
+
+  // Xóa nhanh toàn bộ các lớp cá biệt để đưa về ca Toàn trường
+  const handleQuickResetAllOverrides = () => {
+    if (individualOverrideClasses.length === 0) return;
+    if (window.confirm(`Thầy/Cô có chắc chắn muốn xóa cấu hình riêng của ${individualOverrideClasses.length} lớp (${individualOverrideClasses.join(', ')}) để toàn bộ ${classes.length} lớp đồng bộ theo ca Toàn trường không?`)) {
+      if (onResetAllClassesToSchoolShift) {
+        onResetAllClassesToSchoolShift();
+      }
+      setToastMessage(`Đã đưa toàn bộ ${classes.length} lớp về tuân thủ ca học Toàn trường!`);
+      setTimeout(() => setToastMessage(null), 3500);
+    }
+  };
+
   // Thống kê tổng số lớp học theo từng buổi cho mỗi thứ
   const shiftStats = useMemo(() => {
     const morningCount: number[] = [0, 0, 0, 0, 0];
@@ -270,19 +338,64 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
             <p className="text-xs text-gray-600 mt-1">
               Theo dõi lịch học ca Sáng & Chiều. Click trực tiếp vào ô để <strong className="text-teal-900">Bật / Tắt nhanh</strong> hoặc bấm <strong className="text-amber-800">⚡▾</strong> tại từng khối để <strong className="text-teal-900">Áp dụng mẫu ca học nhanh</strong> cho toàn khối!
             </p>
-            {schoolWideConstraint && (
-              <div className="inline-flex items-center gap-2 mt-2 px-3 py-1 rounded-lg bg-teal-100/90 border border-teal-300 text-teal-950 text-xs font-semibold shadow-xs flex-wrap">
-                <span className="font-extrabold text-teal-900">🏫 Ca học Toàn trường:</span>
-                <span>🌅 Sáng [{schoolWideConstraint.morningDays && schoolWideConstraint.morningDays.length > 0 ? schoolWideConstraint.morningDays.map(d => DAYS[d]).join(', ') : 'Nghỉ'}]</span>
-                <span className="text-teal-400 font-normal">|</span>
-                <span>🌇 Chiều [{schoolWideConstraint.afternoonDays && schoolWideConstraint.afternoonDays.length > 0 ? schoolWideConstraint.afternoonDays.map(d => DAYS[d]).join(', ') : 'Nghỉ'}]</span>
-              </div>
-            )}
+            {/* Thanh hiển thị trạng thái Ca học Toàn trường & Các nút thao tác nhanh */}
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
+              {schoolWideConstraint ? (
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-teal-100/90 border border-teal-300 text-teal-950 text-xs font-semibold shadow-xs flex-wrap">
+                  <span className="font-extrabold text-teal-900">🏫 Ca học Toàn trường:</span>
+                  <span>🌅 Sáng [{schoolWideConstraint.morningDays && schoolWideConstraint.morningDays.length > 0 ? schoolWideConstraint.morningDays.map(d => DAYS[d]).join(', ') : 'Nghỉ'}]</span>
+                  <span className="text-teal-400 font-normal">|</span>
+                  <span>🌇 Chiều [{schoolWideConstraint.afternoonDays && schoolWideConstraint.afternoonDays.length > 0 ? schoolWideConstraint.afternoonDays.map(d => DAYS[d]).join(', ') : 'Nghỉ'}]</span>
+                  <button
+                    type="button"
+                    onClick={handleOpenSchoolShiftModal}
+                    className="ml-1 text-[11px] text-teal-800 hover:text-teal-950 font-bold underline cursor-pointer"
+                  >
+                    Thay đổi
+                  </button>
+                </div>
+              ) : (
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-gray-100 border border-gray-300 text-gray-600 text-xs">
+                  <span>ℹ️ Chưa thiết lập ca học chung Toàn trường</span>
+                  <button
+                    type="button"
+                    onClick={handleOpenSchoolShiftModal}
+                    className="text-[11px] text-teal-700 hover:text-teal-900 font-bold underline cursor-pointer"
+                  >
+                    Thiết lập ngay
+                  </button>
+                </div>
+              )}
+
+              {/* Nút dọn dẹp các lớp cá biệt để đồng bộ về toàn trường */}
+              {individualOverrideClasses.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleQuickResetAllOverrides}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-amber-900 bg-amber-100/90 hover:bg-amber-200 rounded-lg border border-amber-300 shadow-2xs transition-colors cursor-pointer"
+                  title={`Xóa cấu hình riêng của ${individualOverrideClasses.length} lớp (${individualOverrideClasses.join(', ')}) để đồng bộ 100% theo ca Toàn trường`}
+                >
+                  <span>🔄</span>
+                  <span>Đưa tất cả ({individualOverrideClasses.length} lớp riêng) về ca Toàn trường</span>
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* Bộ lọc Khối lớp kèm Dropdown thao tác nhanh trực tiếp & Nút in */}
+          {/* Cụm công cụ: Nút Áp dụng nhanh ca học Toàn trường, Bộ lọc Khối & Nút in */}
           <div className="flex items-center gap-2 flex-wrap" ref={dropdownRef}>
-            <span className="text-xs font-semibold text-gray-500">Khối:</span>
+            {/* Nút Áp dụng nhanh cấu hình Toàn trường ngay trên Ma trận */}
+            <button
+              type="button"
+              onClick={handleOpenSchoolShiftModal}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 active:scale-95 text-white text-xs font-bold shadow-xs hover:shadow transition-all cursor-pointer"
+              title="Cấu hình ca học Sáng & Chiều đồng bộ cho toàn bộ các lớp trong trường"
+            >
+              <span>🏫⚡</span>
+              <span>Áp dụng nhanh cấu hình Toàn trường</span>
+            </button>
+
+            <span className="text-xs font-semibold text-gray-500 ml-1">Khối:</span>
             
             <div className="flex bg-white p-0.5 rounded-lg border border-gray-200 shadow-xs relative">
               {['ALL', ...availableGrades].map(gr => {
@@ -722,6 +835,278 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
           </tfoot>
         </table>
       </div>
+
+      {/* Modal Áp dụng nhanh cấu hình ca học Toàn trường */}
+      {isSchoolModalOpen && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in"
+          onClick={() => setIsSchoolModalOpen(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-xl overflow-hidden animate-scale-up"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header Modal */}
+            <div className="p-4 md:p-5 border-b border-gray-200 bg-gradient-to-r from-teal-50 via-slate-50 to-blue-50 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <span className="flex items-center justify-center w-8 h-8 rounded-xl bg-teal-600 text-white font-bold text-base shadow-sm">
+                  🏫
+                </span>
+                <div>
+                  <h4 className="font-extrabold text-gray-900 text-sm md:text-base uppercase tracking-tight">
+                    Áp dụng nhanh cấu hình ca học Toàn trường
+                  </h4>
+                  <p className="text-xs text-gray-500">
+                    Thiết lập đồng bộ cho toàn bộ <strong>{classes.length} lớp học</strong> trong nhà trường
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSchoolModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Body Modal */}
+            <div className="p-4 md:p-6 space-y-5 max-h-[75vh] overflow-y-auto">
+              {/* Mẫu nhanh 1-chạm */}
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">
+                  1. Chọn nhanh theo mẫu ca học phổ biến:
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModalMorningDays([0, 1, 2, 3, 4]);
+                      setModalAfternoonDays([]);
+                    }}
+                    className={`p-2.5 rounded-xl border text-left transition-all flex flex-col gap-0.5 cursor-pointer ${
+                      modalMorningDays.length === 5 && modalAfternoonDays.length === 0
+                        ? 'bg-teal-50 border-teal-500 ring-2 ring-teal-500/20 text-teal-900 font-bold'
+                        : 'bg-white border-gray-200 hover:bg-gray-50 text-gray-700'
+                    }`}
+                  >
+                    <span className="text-xs font-bold flex items-center gap-1.5">
+                      <span>🌅</span> Toàn trường học SÁNG
+                    </span>
+                    <span className="text-[11px] text-gray-500">Sáng T2-T6 (Tiết 1-5), Chiều nghỉ</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModalMorningDays([]);
+                      setModalAfternoonDays([0, 1, 2, 3, 4]);
+                    }}
+                    className={`p-2.5 rounded-xl border text-left transition-all flex flex-col gap-0.5 cursor-pointer ${
+                      modalMorningDays.length === 0 && modalAfternoonDays.length === 5
+                        ? 'bg-amber-50 border-amber-500 ring-2 ring-amber-500/20 text-amber-900 font-bold'
+                        : 'bg-white border-gray-200 hover:bg-gray-50 text-gray-700'
+                    }`}
+                  >
+                    <span className="text-xs font-bold flex items-center gap-1.5">
+                      <span>🌇</span> Toàn trường học CHIỀU
+                    </span>
+                    <span className="text-[11px] text-gray-500">Sáng nghỉ, Chiều T2-T6 (Tiết 1-3)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModalMorningDays([0, 1, 2, 3, 4]);
+                      setModalAfternoonDays([1, 3]);
+                    }}
+                    className={`p-2.5 rounded-xl border text-left transition-all flex flex-col gap-0.5 cursor-pointer ${
+                      modalMorningDays.length === 5 && modalAfternoonDays.length === 2 && modalAfternoonDays.includes(1) && modalAfternoonDays.includes(3)
+                        ? 'bg-blue-50 border-blue-500 ring-2 ring-blue-500/20 text-blue-900 font-bold'
+                        : 'bg-white border-gray-200 hover:bg-gray-50 text-gray-700'
+                    }`}
+                  >
+                    <span className="text-xs font-bold flex items-center gap-1.5">
+                      <span>✨</span> Sáng T2-T6 + Chiều T3, T5
+                    </span>
+                    <span className="text-[11px] text-gray-500">Học sáng cả tuần, chiều học 2 buổi</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModalMorningDays([0, 1, 2, 3, 4]);
+                      setModalAfternoonDays([0, 1, 2, 3, 4]);
+                    }}
+                    className={`p-2.5 rounded-xl border text-left transition-all flex flex-col gap-0.5 cursor-pointer ${
+                      modalMorningDays.length === 5 && modalAfternoonDays.length === 5
+                        ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-500/20 text-emerald-900 font-bold'
+                        : 'bg-white border-gray-200 hover:bg-gray-50 text-gray-700'
+                    }`}
+                  >
+                    <span className="text-xs font-bold flex items-center gap-1.5">
+                      <span>🔄</span> Học CẢ NGÀY (2 buổi/ngày)
+                    </span>
+                    <span className="text-[11px] text-gray-500">Sáng T2-T6 & Chiều T2-T6</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Tùy chỉnh chi tiết theo từng thứ */}
+              <div className="bg-gray-50/90 p-4 rounded-xl border border-gray-200 space-y-4">
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide">
+                  2. Tùy chỉnh chi tiết ngày học trong tuần:
+                </label>
+
+                {/* Sáng */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-teal-900 flex items-center gap-1.5">
+                      <span>🌅</span> Buổi Sáng (Tiết 1 - 5)
+                    </span>
+                    <div className="flex items-center gap-2 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setModalMorningDays([0, 1, 2, 3, 4])}
+                        className="text-teal-700 hover:underline font-semibold cursor-pointer"
+                      >
+                        Cả tuần (T2-T6)
+                      </button>
+                      <span className="text-gray-300">|</span>
+                      <button
+                        type="button"
+                        onClick={() => setModalMorningDays([])}
+                        className="text-gray-500 hover:underline cursor-pointer"
+                      >
+                        Nghỉ tất cả
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {[0, 1, 2, 3, 4].map(d => {
+                      const active = modalMorningDays.includes(d);
+                      return (
+                        <button
+                          type="button"
+                          key={d}
+                          onClick={() => {
+                            setModalMorningDays(prev =>
+                              prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d].sort((a, b) => a - b)
+                            );
+                          }}
+                          className={`py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+                            active
+                              ? 'bg-teal-600 text-white shadow-xs scale-102 ring-1 ring-teal-500'
+                              : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-100'
+                          }`}
+                        >
+                          {DAYS[d]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Chiều */}
+                <div className="pt-3 border-t border-gray-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                      <span>🌇</span> Buổi Chiều (Tiết 1 - 3)
+                    </span>
+                    <div className="flex items-center gap-2 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setModalAfternoonDays([0, 1, 2, 3, 4])}
+                        className="text-amber-700 hover:underline font-semibold cursor-pointer"
+                      >
+                        Cả tuần (T2-T6)
+                      </button>
+                      <span className="text-gray-300">|</span>
+                      <button
+                        type="button"
+                        onClick={() => setModalAfternoonDays([])}
+                        className="text-gray-500 hover:underline cursor-pointer"
+                      >
+                        Nghỉ tất cả
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {[0, 1, 2, 3, 4].map(d => {
+                      const active = modalAfternoonDays.includes(d);
+                      return (
+                        <button
+                          type="button"
+                          key={d}
+                          onClick={() => {
+                            setModalAfternoonDays(prev =>
+                              prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d].sort((a, b) => a - b)
+                            );
+                          }}
+                          className={`py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+                            active
+                              ? 'bg-amber-600 text-white shadow-xs scale-102 ring-1 ring-amber-500'
+                              : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-100'
+                          }`}
+                        >
+                          {DAYS[d]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Tùy chọn xử lý các lớp cá biệt */}
+              <div className="p-3.5 rounded-xl border border-teal-200 bg-teal-50/50 space-y-2">
+                <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={resetOverrides}
+                    onChange={e => setResetOverrides(e.target.checked)}
+                    className="mt-0.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 cursor-pointer"
+                  />
+                  <div className="text-xs">
+                    <span className="font-bold text-gray-900">
+                      Đồng bộ 100% toàn trường (Xóa các lịch cá biệt của từng lớp)
+                    </span>
+                    <p className="text-gray-600 mt-0.5">
+                      Khi chọn, tất cả các lớp sẽ lập tức tuân thủ đúng ca học Toàn trường này. Nếu bỏ chọn, các lớp đã được Thầy/Cô gán lịch riêng trước đó vẫn sẽ giữ nguyên.
+                    </p>
+                  </div>
+                </label>
+
+                {individualOverrideClasses.length > 0 && (
+                  <div className="text-[11px] text-amber-800 bg-amber-50 p-2 rounded-lg border border-amber-200">
+                    ⚠️ Hiện có <strong>{individualOverrideClasses.length} lớp</strong> có cấu hình riêng ({individualOverrideClasses.slice(0, 6).join(', ')}{individualOverrideClasses.length > 6 ? '...' : ''}).
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer Modal */}
+            <div className="p-4 md:p-5 border-t border-gray-200 bg-gray-50 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setIsSchoolModalOpen(false)}
+                className="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-100 text-xs font-bold transition-colors cursor-pointer"
+              >
+                Hủy bỏ
+              </button>
+
+              <button
+                type="button"
+                onClick={handleApplySchoolShiftModal}
+                disabled={modalMorningDays.length === 0 && modalAfternoonDays.length === 0}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs shadow-md shadow-teal-700/20 transition-all cursor-pointer"
+              >
+                <span>🏫✓</span>
+                <span>Xác nhận áp dụng cho Toàn trường</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
