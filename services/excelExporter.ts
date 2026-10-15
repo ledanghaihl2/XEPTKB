@@ -1,3 +1,5 @@
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
 import { TimetableGrid, InputRow } from '../types';
 import { CLASSES, DAYS, PERIODS, isValidSlot } from '../constants';
 
@@ -8,7 +10,7 @@ declare global {
   }
 }
 
-export const exportScheduleToExcel = (schedule: TimetableGrid, rawData: InputRow[]) => {
+export const exportScheduleToExcel = async (schedule: TimetableGrid, rawData: InputRow[]) => {
   if (!(window as any).XLSX) {
     alert('Thư viện xuất Excel chưa sẵn sàng. Vui lòng thử lại sau giây lát.');
     return;
@@ -153,8 +155,11 @@ export const exportScheduleToExcel = (schedule: TimetableGrid, rawData: InputRow
         if (targetRow) {
           const rowRange = `'TKB Lớp'!$${firstClassCol}$${targetRow}:$${lastClassCol}$${targetRow}`;
           // Công thức Excel: Dò tìm cột lớp trong dòng tiết tương ứng của 'TKB Lớp' chứa tên giáo viên này.
-          // Tự động cập nhật Tên lớp & Môn học khi Thầy/Cô chỉnh sửa ô tại sheet 'TKB Lớp'.
-          const formula = `IFERROR(INDEX(${classHeaderRange}, MATCH("*${teacher}*", ${rowRange}, 0)) & CHAR(10) & "(" & TRIM(LEFT(INDEX(${rowRange}, MATCH("*${teacher}*", ${rowRange}, 0)), SEARCH("(", INDEX(${rowRange}, MATCH("*${teacher}*", ${rowRange}, 0)) & "(") - 1)) & ")", "")`;
+          // Tự động kiểm tra nếu giáo viên bị xếp trùng từ 2 lớp trở lên trong cùng 1 tiết sẽ hiện cảnh báo TRÙNG.
+          const conflictCount = `COUNTIF(${rowRange}, "*${teacher}*")`;
+          const baseFormula = `IFERROR(INDEX(${classHeaderRange}, MATCH("*${teacher}*", ${rowRange}, 0)) & CHAR(10) & "(" & TRIM(LEFT(INDEX(${rowRange}, MATCH("*${teacher}*", ${rowRange}, 0)), SEARCH("(", INDEX(${rowRange}, MATCH("*${teacher}*", ${rowRange}, 0)) & "(") - 1)) & ")", "")`;
+          const formula = `IF(${conflictCount}>1, "⚠️ TRÙNG " & ${conflictCount} & " LỚP!", ${baseFormula})`;
+
           row.push({
             t: 's',
             v: found,
@@ -437,6 +442,69 @@ export const exportScheduleToExcel = (schedule: TimetableGrid, rawData: InputRow
   wsSubject['!cols'] = [{wch: 5}, {wch: 25}, {wch: 15}, {wch: 15}, {wch: 15}];
   XLSX.utils.book_append_sheet(wb, wsSubject, "TK Môn học");
 
-  // Export
-  XLSX.writeFile(wb, "ThoiKhoaBieu-tuan-1-2025.xlsx");
+  // --- XUẤT FILE EXCEL VỚI ĐỊNH DẠNG TÔ MÀU CẢNH BÁO TRÙNG LỊCH (CONDITIONAL FORMATTING) ---
+  const fileName = "ThoiKhoaBieu-tuan-1-2025.xlsx";
+
+  try {
+    // 1. Tạo buffer file Excel dạng binary array từ XLSX
+    const u8 = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    
+    // 2. Sử dụng JSZip để can thiệp vào cấu trúc OpenXML của file .xlsx
+    const zip = await JSZip.loadAsync(u8);
+    let sheet1Xml = await zip.file('xl/worksheets/sheet1.xml')?.async('string');
+    let sheet2Xml = await zip.file('xl/worksheets/sheet2.xml')?.async('string');
+    let stylesXml = await zip.file('xl/styles.xml')?.async('string');
+
+    if (sheet1Xml && stylesXml) {
+      // 3. Khai báo kiểu định dạng cảnh báo lỗi dxf trong styles.xml:
+      // Nền màu đỏ nhạt (FFFFC7CE), Chữ in đậm màu đỏ sẫm (FF9C0006), Viền màu đỏ sẫm
+      const dxfXml = '<dxfs count="1"><dxf><font><color rgb="FF9C0006"/><b/></font><fill><patternFill patternType="solid"><fgColor rgb="FFFFC7CE"/><bgColor indexed="64"/></patternFill></fill><border><top style="thin" color="FF9C0006"/><bottom style="thin" color="FF9C0006"/><left style="thin" color="FF9C0006"/><right style="thin" color="FF9C0006"/></border></dxf></dxfs>';
+      
+      if (stylesXml.includes('<dxfs count="0"/>')) {
+        stylesXml = stylesXml.replace('<dxfs count="0"/>', dxfXml);
+      } else if (stylesXml.includes('</styleSheet>')) {
+        stylesXml = stylesXml.replace('</styleSheet>', dxfXml + '</styleSheet>');
+      }
+      zip.file('xl/styles.xml', stylesXml);
+
+      // 4. Áp dụng Conditional Formatting cho Sheet 1 ("TKB Lớp"):
+      // Quét toàn bộ các ô phân công từ C2 đến cột lớp cuối cùng hàng cuối cùng.
+      // Công thức: Nếu ô khác rỗng VÀ tên giáo viên trong ngoặc xuất hiện > 1 lần trong hàng đó thì TÔ ĐỎ Ô ĐÓ!
+      const cfSqref = `${firstClassCol}2:${lastClassCol}${maxTkbRow}`;
+      const cfFormula1 = `AND(${firstClassCol}2&lt;&gt;&quot;&quot;,COUNTIF($${firstClassCol}2:$${lastClassCol}2,&quot;*(&quot;&amp;MID(${firstClassCol}2,SEARCH(&quot;(&quot;,${firstClassCol}2&amp;&quot;(&quot;)+1,SEARCH(&quot;)&quot;,${firstClassCol}2&amp;&quot;)&quot;)-SEARCH(&quot;(&quot;,${firstClassCol}2&amp;&quot;(&quot;)-1)&amp;&quot;)*&quot;)&gt;1)`;
+      const cfXml1 = `<conditionalFormatting sqref="${cfSqref}"><cfRule type="expression" dxfId="0" priority="1"><formula>${cfFormula1}</formula></cfRule></conditionalFormatting>`;
+
+      if (sheet1Xml.includes('<ignoredErrors>')) {
+        sheet1Xml = sheet1Xml.replace('<ignoredErrors>', cfXml1 + '<ignoredErrors>');
+      } else {
+        sheet1Xml = sheet1Xml.replace('</worksheet>', cfXml1 + '</worksheet>');
+      }
+      zip.file('xl/worksheets/sheet1.xml', sheet1Xml);
+
+      // 5. Áp dụng Conditional Formatting cho Sheet 2 ("TKB Giáo viên"):
+      // Tự động tô đỏ bất kỳ ô nào có chữ "TRÙNG"
+      if (sheet2Xml) {
+        const cfXml2 = `<conditionalFormatting sqref="B2:F${wsDataTKB_Teacher.length}"><cfRule type="expression" dxfId="0" priority="1"><formula>NOT(ISERROR(SEARCH(&quot;TRÙNG&quot;,B2)))</formula></cfRule></conditionalFormatting>`;
+        if (sheet2Xml.includes('<ignoredErrors>')) {
+          sheet2Xml = sheet2Xml.replace('<ignoredErrors>', cfXml2 + '<ignoredErrors>');
+        } else {
+          sheet2Xml = sheet2Xml.replace('</worksheet>', cfXml2 + '</worksheet>');
+        }
+        zip.file('xl/worksheets/sheet2.xml', sheet2Xml);
+      }
+
+      // 6. Đóng gói lại thành Blob và kích hoạt tải về
+      const blob = await zip.generateAsync({
+        type: 'blob',
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+      saveAs(blob, fileName);
+      return;
+    }
+  } catch (err) {
+    console.warn('Lỗi chèn Conditional Formatting OpenXML, kích hoạt xuất XLSX chuẩn dự phòng:', err);
+  }
+
+  // Phương án dự phòng chuẩn
+  XLSX.writeFile(wb, fileName);
 };
