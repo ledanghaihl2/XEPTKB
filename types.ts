@@ -53,6 +53,8 @@ export interface Constraint {
   shift?: ShiftType; // 'ALL' | 'MORNING' | 'AFTERNOON'
   morningDays?: number[]; // Các thứ học/dạy buổi sáng: 0 (T2) -> 4 (T6)
   afternoonDays?: number[]; // Các thứ học/dạy buổi chiều: 0 (T2) -> 4 (T6)
+  morningPeriodCap?: number; // Số tiết tối đa mỗi buổi sáng (mặc định 5, có thể là 4 hoặc 5)
+  afternoonPeriodCap?: number; // Số tiết tối đa mỗi buổi chiều (mặc định 3, có thể là 2, 3 hoặc 4)
 }
 
 export interface TimetableVersion {

@@ -229,6 +229,8 @@ function isTeacherBusyAt(
 export interface ClassShiftRule {
   morningDays?: number[];
   afternoonDays?: number[];
+  morningPeriodCap?: number;
+  afternoonPeriodCap?: number;
   shift?: ShiftType;
 }
 
@@ -251,8 +253,12 @@ export function isSlotAllowedForClass(
   if (rule.morningDays !== undefined || rule.afternoonDays !== undefined) {
     if (isMorning) {
       if (!rule.morningDays || !rule.morningDays.includes(d)) return false;
+      const morningCap = rule.morningPeriodCap ?? 5;
+      if (p >= morningCap) return false;
     } else {
       if (!rule.afternoonDays || !rule.afternoonDays.includes(d)) return false;
+      const afternoonCap = rule.afternoonPeriodCap ?? 3;
+      if ((p - 5) >= afternoonCap) return false;
     }
     return true;
   }
@@ -329,6 +335,8 @@ export function buildClassRuleMap(constraints: Constraint[], classes?: string[])
       classRuleMap.set(cls, {
         morningDays: schoolShift.morningDays,
         afternoonDays: schoolShift.afternoonDays,
+        morningPeriodCap: schoolShift.morningPeriodCap,
+        afternoonPeriodCap: schoolShift.afternoonPeriodCap,
         shift: schoolShift.shift
       });
     });
@@ -337,9 +345,12 @@ export function buildClassRuleMap(constraints: Constraint[], classes?: string[])
   // 2. Ràng buộc cụ thể của từng lớp (sẽ ghi đè ràng buộc toàn trường nếu có lớp cá biệt)
   constraints.forEach(c => {
     if (c.type === 'CLASS_SHIFT' && c.className && c.className !== 'ALL' && c.className !== 'TOAN_TRUONG') {
+      const existing = classRuleMap.get(c.className);
       classRuleMap.set(c.className, {
         morningDays: c.morningDays,
         afternoonDays: c.afternoonDays,
+        morningPeriodCap: c.morningPeriodCap ?? existing?.morningPeriodCap,
+        afternoonPeriodCap: c.afternoonPeriodCap ?? existing?.afternoonPeriodCap,
         shift: c.shift
       });
     }

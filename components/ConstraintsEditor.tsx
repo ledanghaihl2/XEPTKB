@@ -97,9 +97,15 @@ const ConstraintsEditor: React.FC<Props> = ({
   };
 
   // Xử lý cập nhật nhanh ca học Toàn trường trực tiếp từ Ma trận (Cập nhật nguyên tử 100%)
-  const handleUpdateSchoolShift = (morningDays: number[], afternoonDays: number[], resetIndividualClasses: boolean = false) => {
+  const handleUpdateSchoolShift = (
+    morningDays: number[], 
+    afternoonDays: number[], 
+    resetIndividualClasses: boolean = false,
+    periodCaps?: { morningPeriodCap?: number; afternoonPeriodCap?: number }
+  ) => {
     if (onUpdateConstraints) {
       onUpdateConstraints(prev => {
+        const prevSS = prev.find(c => c.type === 'SCHOOL_SHIFT');
         let filtered = prev.filter(c => c.type !== 'SCHOOL_SHIFT');
         if (resetIndividualClasses) {
           filtered = filtered.filter(c => c.type !== 'CLASS_SHIFT');
@@ -110,13 +116,16 @@ const ConstraintsEditor: React.FC<Props> = ({
             id: 'ss_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
             type: 'SCHOOL_SHIFT',
             morningDays: [...morningDays],
-            afternoonDays: [...afternoonDays]
+            afternoonDays: [...afternoonDays],
+            morningPeriodCap: periodCaps?.morningPeriodCap ?? prevSS?.morningPeriodCap,
+            afternoonPeriodCap: periodCaps?.afternoonPeriodCap ?? prevSS?.afternoonPeriodCap
           }
         ];
       });
       return;
     }
     const existing = constraints.filter(c => c.type === 'SCHOOL_SHIFT');
+    const prevCap = existing[0];
     existing.forEach(item => onRemove(item.id));
     if (resetIndividualClasses) {
       const classShifts = constraints.filter(c => c.type === 'CLASS_SHIFT');
@@ -125,7 +134,9 @@ const ConstraintsEditor: React.FC<Props> = ({
     onAdd({
       type: 'SCHOOL_SHIFT',
       morningDays: [...morningDays],
-      afternoonDays: [...afternoonDays]
+      afternoonDays: [...afternoonDays],
+      morningPeriodCap: periodCaps?.morningPeriodCap ?? prevCap?.morningPeriodCap,
+      afternoonPeriodCap: periodCaps?.afternoonPeriodCap ?? prevCap?.afternoonPeriodCap
     });
   };
 
@@ -142,10 +153,11 @@ const ConstraintsEditor: React.FC<Props> = ({
   // Cập nhật tùy biến ca học cho nhiều lớp cùng lúc (Cập nhật nguyên tử 100%)
   const handleBatchUpdateCustomClassShifts = (
     updates: { className: string; morningDays: number[]; afternoonDays: number[] }[],
-    schoolWideUpdate?: { morningDays: number[]; afternoonDays: number[] }
+    schoolWideUpdate?: { morningDays: number[]; afternoonDays: number[]; morningPeriodCap?: number; afternoonPeriodCap?: number }
   ) => {
     if (onUpdateConstraints) {
       onUpdateConstraints(prev => {
+        const prevSS = prev.find(c => c.type === 'SCHOOL_SHIFT');
         const updateClassSet = new Set(updates.map(u => u.className));
         let next = prev.filter(c => !(c.type === 'CLASS_SHIFT' && updateClassSet.has(c.className || '')));
         
@@ -155,7 +167,9 @@ const ConstraintsEditor: React.FC<Props> = ({
             id: 'ss_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
             type: 'SCHOOL_SHIFT',
             morningDays: [...schoolWideUpdate.morningDays],
-            afternoonDays: [...schoolWideUpdate.afternoonDays]
+            afternoonDays: [...schoolWideUpdate.afternoonDays],
+            morningPeriodCap: schoolWideUpdate.morningPeriodCap ?? prevSS?.morningPeriodCap,
+            afternoonPeriodCap: schoolWideUpdate.afternoonPeriodCap ?? prevSS?.afternoonPeriodCap
           });
         }
 
@@ -184,8 +198,19 @@ const ConstraintsEditor: React.FC<Props> = ({
     });
   };
 
+  // Định mức số tiết ca Sáng / Chiều từ cấu hình Toàn trường (mặc định Sáng 5, Chiều 3)
+  const schoolWideConstraint = useMemo(() => {
+    return constraints.find(item => 
+      item.type === 'SCHOOL_SHIFT' || 
+      (item.type === 'CLASS_SHIFT' && (!item.className || item.className === 'ALL' || item.className === 'TOAN_TRUONG'))
+    );
+  }, [constraints]);
+
+  const morningCap = schoolWideConstraint?.morningPeriodCap || 5;
+  const afternoonCap = schoolWideConstraint?.afternoonPeriodCap || 3;
+
   // Tính tổng số tiết tối đa có thể xếp theo cấu hình ca/thứ này
-  const currentCapacity = (morningDays.length * 5) + (afternoonDays.length * 3);
+  const currentCapacity = (morningDays.length * morningCap) + (afternoonDays.length * afternoonCap);
 
   // Số tiết mà lớp đang chọn cần trong phân công
   const selectedClassNeededSessions = useMemo(() => {
@@ -670,10 +695,10 @@ const ConstraintsEditor: React.FC<Props> = ({
                 <div className="flex items-center justify-between mb-2.5">
                   <span className="text-xs font-bold text-teal-950 flex items-center gap-1.5">
                     <span>🌅</span>
-                    BUỔI SÁNG (Tiết 1 - 5, từ 07:15 đến 11:30):
+                    BUỔI SÁNG (Tiết 1 - {morningCap}, từ 07:15 đến 11:30):
                     <span className="font-semibold text-teal-800 ml-1">
                       {morningDays.length > 0 
-                        ? `(${morningDays.length} buổi = ${morningDays.length * 5} tiết)` 
+                        ? `(${morningDays.length} buổi = ${morningDays.length * morningCap} tiết)` 
                         : '(Không chọn - Nghỉ buổi sáng)'}
                     </span>
                   </span>
@@ -723,10 +748,10 @@ const ConstraintsEditor: React.FC<Props> = ({
                 <div className="flex items-center justify-between mb-2.5">
                   <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
                     <span>🌇</span>
-                    BUỔI CHIỀU (Tiết 1 - 3, từ 13:30 đến 16:00):
+                    BUỔI CHIỀU (Tiết 1 - {afternoonCap}, từ 13:30 đến 16:00):
                     <span className="font-semibold text-amber-800 ml-1">
                       {afternoonDays.length > 0 
-                        ? `(${afternoonDays.length} buổi = ${afternoonDays.length * 3} tiết)` 
+                        ? `(${afternoonDays.length} buổi = ${afternoonDays.length * afternoonCap} tiết)` 
                         : '(Không chọn - Nghỉ buổi chiều)'}
                     </span>
                   </span>
@@ -779,7 +804,7 @@ const ConstraintsEditor: React.FC<Props> = ({
                     {currentCapacity} tiết/tuần
                   </span>
                   <span className="text-slate-500">
-                    ({morningDays.length * 5} tiết sáng + {afternoonDays.length * 3} tiết chiều)
+                    ({morningDays.length * morningCap} tiết sáng + {afternoonDays.length * afternoonCap} tiết chiều)
                   </span>
                 </div>
 
