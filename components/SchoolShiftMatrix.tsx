@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Constraint, InputRow } from '../types';
 import { DAYS } from '../constants';
 
@@ -85,9 +85,29 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
     };
   }, [openBatchGrade]);
 
-  // Tự động đóng modal ca học Toàn trường hoặc Định mức ca học khi nhấn phím ESC
+  // Xử lý mở Modal cấu hình định mức ca học
+  const handleOpenPeriodCapsModal = useCallback(() => {
+    setTempMorningCap(shiftPeriodCaps.morningCap);
+    setTempAfternoonCap(shiftPeriodCaps.afternoonCap);
+    setIsPeriodCapsModalOpen(true);
+  }, [shiftPeriodCaps.morningCap, shiftPeriodCaps.afternoonCap]);
+
+  // Phím tắt bàn phím:
+  // - Alt + C: Bật / Tắt nhanh Modal cấu hình định mức ca học (Custom Shift Period Caps)
+  // - ESC: Tự động đóng modal ca học Toàn trường hoặc Định mức ca học
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Phím tắt Alt + C để mở / đóng nhanh Modal cấu hình định mức ca học
+      if (e.altKey && !e.ctrlKey && (e.key === 'c' || e.key === 'C' || e.code === 'KeyC')) {
+        e.preventDefault();
+        if (isPeriodCapsModalOpen) {
+          setIsPeriodCapsModalOpen(false);
+        } else {
+          handleOpenPeriodCapsModal();
+        }
+        return;
+      }
+
       if (e.key === 'Escape') {
         if (isPeriodCapsModalOpen) {
           setIsPeriodCapsModalOpen(false);
@@ -98,7 +118,7 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSchoolModalOpen, isPeriodCapsModalOpen]);
+  }, [isSchoolModalOpen, isPeriodCapsModalOpen, handleOpenPeriodCapsModal]);
 
   // Trích xuất danh sách Khối lớp tự động từ tên các lớp
   const availableGrades = useMemo(() => {
@@ -142,13 +162,6 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
       });
     }
   }, [schoolWideConstraint?.morningPeriodCap, schoolWideConstraint?.afternoonPeriodCap]);
-
-  // Xử lý mở Modal cấu hình định mức ca học
-  const handleOpenPeriodCapsModal = () => {
-    setTempMorningCap(shiftPeriodCaps.morningCap);
-    setTempAfternoonCap(shiftPeriodCaps.afternoonCap);
-    setIsPeriodCapsModalOpen(true);
-  };
 
   // Lưu cấu hình định mức ca học
   const handleSavePeriodCaps = () => {
@@ -819,13 +832,15 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
                     Thay đổi
                   </button>
                   <span className="text-teal-400 font-normal">|</span>
-                  <span>⚙️ Định mức: Sáng {shiftPeriodCaps.morningCap}t, Chiều {shiftPeriodCaps.afternoonCap}t</span>
                   <button
                     type="button"
                     onClick={handleOpenPeriodCapsModal}
-                    className="text-[11px] text-teal-800 hover:text-teal-950 font-bold underline cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-teal-200/90 hover:bg-teal-300 text-teal-950 font-bold text-xs border border-teal-400/80 transition-all cursor-pointer shadow-2xs group active:scale-95"
+                    title="Click trực tiếp hoặc nhấn Alt+C để mở cấu hình định mức số tiết ca học"
                   >
-                    Đổi
+                    <span className="group-hover:rotate-45 transition-transform">⚙️</span>
+                    <span>Định mức: Sáng {shiftPeriodCaps.morningCap}t, Chiều {shiftPeriodCaps.afternoonCap}t</span>
+                    <kbd className="text-[10px] bg-teal-100/90 text-teal-900 px-1 py-0.2 rounded border border-teal-300/80 font-mono font-bold">Alt+C</kbd>
                   </button>
                 </div>
               ) : (
@@ -839,13 +854,15 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
                     Thiết lập ngay
                   </button>
                   <span className="text-gray-300">|</span>
-                  <span>⚙️ Định mức: Sáng {shiftPeriodCaps.morningCap}t, Chiều {shiftPeriodCaps.afternoonCap}t</span>
                   <button
                     type="button"
                     onClick={handleOpenPeriodCapsModal}
-                    className="text-[11px] text-teal-700 hover:text-teal-900 font-bold underline cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-gray-200/90 hover:bg-teal-100 hover:text-teal-950 hover:border-teal-300 text-gray-700 font-bold text-xs border border-gray-300 transition-all cursor-pointer shadow-2xs group active:scale-95"
+                    title="Click trực tiếp hoặc nhấn Alt+C để mở cấu hình định mức số tiết ca học"
                   >
-                    Đổi
+                    <span className="group-hover:rotate-45 transition-transform">⚙️</span>
+                    <span>Định mức: Sáng {shiftPeriodCaps.morningCap}t, Chiều {shiftPeriodCaps.afternoonCap}t</span>
+                    <kbd className="text-[10px] bg-white text-gray-600 px-1 py-0.2 rounded border border-gray-300 font-mono font-bold">Alt+C</kbd>
                   </button>
                 </div>
               )}
@@ -871,11 +888,12 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
             <button
               type="button"
               onClick={handleOpenPeriodCapsModal}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-800 active:scale-95 text-white text-xs font-bold shadow-xs hover:shadow transition-all cursor-pointer"
-              title="Cài đặt số tiết tối đa có thể xếp cho mỗi ca Sáng và Chiều"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-800 active:scale-95 text-white text-xs font-bold shadow-xs hover:shadow transition-all cursor-pointer group"
+              title="Cài đặt số tiết tối đa có thể xếp cho mỗi ca Sáng và Chiều (Phím tắt: Alt + C)"
             >
-              <span>⚙️</span>
+              <span className="group-hover:rotate-45 transition-transform">⚙️</span>
               <span>Định mức: Sáng {shiftPeriodCaps.morningCap}t, Chiều {shiftPeriodCaps.afternoonCap}t</span>
+              <kbd className="text-[10px] bg-slate-600/90 px-1.5 py-0.5 rounded font-mono text-slate-200 border border-slate-500 font-bold">Alt+C</kbd>
             </button>
 
             {/* Nút Áp dụng nhanh cấu hình Toàn trường ngay trên Ma trận */}
@@ -2126,7 +2144,10 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
                 </div>
                 <div>
                   <h3 className="font-extrabold text-base sm:text-lg text-white flex items-center gap-2">
-                    Định Mức Số Tiết Mỗi Ca Học
+                    <span>Định Mức Số Tiết Mỗi Ca Học</span>
+                    <span className="text-[10px] bg-teal-500/30 text-teal-200 border border-teal-400/30 px-1.5 py-0.5 rounded font-mono font-bold">
+                      Alt + C
+                    </span>
                   </h3>
                   <p className="text-xs text-slate-300 mt-0.5">
                     Tùy chỉnh số tiết tối đa có thể xếp cho ca Sáng và ca Chiều
@@ -2137,7 +2158,7 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
                 type="button"
                 onClick={() => setIsPeriodCapsModalOpen(false)}
                 className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
-                title="Đóng (ESC)"
+                title="Đóng (ESC hoặc Alt+C)"
               >
                 ✕
               </button>
