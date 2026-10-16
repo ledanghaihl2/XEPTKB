@@ -152,7 +152,7 @@ const ConstraintsEditor: React.FC<Props> = ({
 
   // Cập nhật tùy biến ca học cho nhiều lớp cùng lúc (Cập nhật nguyên tử 100%)
   const handleBatchUpdateCustomClassShifts = (
-    updates: { className: string; morningDays: number[]; afternoonDays: number[] }[],
+    updates: { className: string; morningDays: number[]; afternoonDays: number[]; morningPeriodCap?: number; afternoonPeriodCap?: number }[],
     schoolWideUpdate?: { morningDays: number[]; afternoonDays: number[]; morningPeriodCap?: number; afternoonPeriodCap?: number }
   ) => {
     if (onUpdateConstraints) {
@@ -178,7 +178,9 @@ const ConstraintsEditor: React.FC<Props> = ({
           type: 'CLASS_SHIFT',
           className: u.className,
           morningDays: [...u.morningDays],
-          afternoonDays: [...u.afternoonDays]
+          afternoonDays: [...u.afternoonDays],
+          morningPeriodCap: u.morningPeriodCap,
+          afternoonPeriodCap: u.afternoonPeriodCap
         }));
 
         return [...next, ...additions];
@@ -193,7 +195,9 @@ const ConstraintsEditor: React.FC<Props> = ({
         type: 'CLASS_SHIFT',
         className: u.className,
         morningDays: u.morningDays,
-        afternoonDays: u.afternoonDays
+        afternoonDays: u.afternoonDays,
+        morningPeriodCap: u.morningPeriodCap,
+        afternoonPeriodCap: u.afternoonPeriodCap
       });
     });
   };

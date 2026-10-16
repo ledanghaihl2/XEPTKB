@@ -373,6 +373,37 @@ export function buildClassRuleMap(constraints: Constraint[], classes?: string[])
     });
   }
 
+  // 1.5. Đọc định mức theo khối từ localStorage (nếu có) để dự phòng cho từng lớp
+  let gradeCapsMap: Record<string, { morningCap: number; afternoonCap: number }> = {};
+  try {
+    const savedGradeCaps = typeof localStorage !== 'undefined' ? localStorage.getItem('tkb_grade_period_caps') : null;
+    if (savedGradeCaps) {
+      gradeCapsMap = JSON.parse(savedGradeCaps);
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  if (Object.keys(gradeCapsMap).length > 0) {
+    const targetClasses = classes && classes.length > 0 ? classes : CLASSES;
+    targetClasses.forEach(cls => {
+      const match = cls.match(/^(\d+)/);
+      const gr = match ? match[1] : '';
+      if (gr && gradeCapsMap[gr]) {
+        const existing = classRuleMap.get(cls);
+        if (existing) {
+          existing.morningPeriodCap = gradeCapsMap[gr].morningCap;
+          existing.afternoonPeriodCap = gradeCapsMap[gr].afternoonCap;
+        } else {
+          classRuleMap.set(cls, {
+            morningPeriodCap: gradeCapsMap[gr].morningCap,
+            afternoonPeriodCap: gradeCapsMap[gr].afternoonCap
+          });
+        }
+      }
+    });
+  }
+
   // 2. Ràng buộc cụ thể của từng lớp (sẽ ghi đè ràng buộc toàn trường nếu có lớp cá biệt)
   constraints.forEach(c => {
     if (c.type === 'CLASS_SHIFT' && c.className && c.className !== 'ALL' && c.className !== 'TOAN_TRUONG') {

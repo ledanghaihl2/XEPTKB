@@ -19,6 +19,20 @@ const getInitialShiftCaps = () => {
   return { morningCap: 5, afternoonCap: 3 };
 };
 
+const STORAGE_KEY_GRADE_CAPS = 'tkb_grade_period_caps';
+
+const getInitialGradeCaps = (): Record<string, { morningCap: number; afternoonCap: number }> => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY_GRADE_CAPS);
+    if (saved) {
+      return JSON.parse(saved);
+    }
+  } catch (e) {
+    // ignore
+  }
+  return {};
+};
+
 interface Props {
   classes: string[];
   constraints: Constraint[];
@@ -28,8 +42,8 @@ interface Props {
   onUpdateSchoolShift?: (morningDays: number[], afternoonDays: number[], resetIndividualClasses?: boolean) => void;
   onResetAllClassesToSchoolShift?: () => void;
   onBatchUpdateCustomClassShifts?: (
-    updates: { className: string; morningDays: number[]; afternoonDays: number[] }[],
-    schoolWideUpdate?: { morningDays: number[]; afternoonDays: number[] }
+    updates: { className: string; morningDays: number[]; afternoonDays: number[]; morningPeriodCap?: number; afternoonPeriodCap?: number }[],
+    schoolWideUpdate?: { morningDays: number[]; afternoonDays: number[]; morningPeriodCap?: number; afternoonPeriodCap?: number }
   ) => void;
 }
 
@@ -64,6 +78,14 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
   const [shiftPeriodCaps, setShiftPeriodCaps] = useState<{ morningCap: number; afternoonCap: number }>(() => {
     return getInitialShiftCaps();
   });
+
+  // State quản lý Định Mức riêng theo từng Khối lớp (Grade-level Period Caps)
+  const [gradePeriodCaps, setGradePeriodCaps] = useState<Record<string, { morningCap: number; afternoonCap: number }>>(() => {
+    return getInitialGradeCaps();
+  });
+  const [tempGradePeriodCaps, setTempGradePeriodCaps] = useState<Record<string, { morningCap: number; afternoonCap: number }>>({});
+  const [activeCapTab, setActiveCapTab] = useState<'school' | 'grades'>('school');
+
   const [isPeriodCapsModalOpen, setIsPeriodCapsModalOpen] = useState<boolean>(false);
   const [tempMorningCap, setTempMorningCap] = useState<number>(5);
   const [tempAfternoonCap, setTempAfternoonCap] = useState<number>(3);
@@ -85,12 +107,34 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
     };
   }, [openBatchGrade]);
 
+  // Trích xuất danh sách Khối lớp tự động từ tên các lớp
+  const availableGrades = useMemo(() => {
+    const gradeSet = new Set<string>();
+    classes.forEach(cls => {
+      const match = cls.match(/^(\d+)/);
+      if (match) {
+        gradeSet.add(match[1]);
+      }
+    });
+    const list = Array.from(gradeSet).sort((a, b) => parseInt(a) - parseInt(b));
+    return list.length > 0 ? list : ['6', '7', '8', '9'];
+  }, [classes]);
+
   // Xử lý mở Modal cấu hình định mức ca học
   const handleOpenPeriodCapsModal = useCallback(() => {
     setTempMorningCap(shiftPeriodCaps.morningCap);
     setTempAfternoonCap(shiftPeriodCaps.afternoonCap);
+    // Đồng bộ định mức tạm thời cho từng khối (chỉ lấy các khối đã có định mức riêng)
+    const initialTemps: Record<string, { morningCap: number; afternoonCap: number }> = {};
+    availableGrades.forEach(gr => {
+      if (gradePeriodCaps[gr]) {
+        initialTemps[gr] = { ...gradePeriodCaps[gr] };
+      }
+    });
+    setTempGradePeriodCaps(initialTemps);
+    setActiveCapTab('school');
     setIsPeriodCapsModalOpen(true);
-  }, [shiftPeriodCaps.morningCap, shiftPeriodCaps.afternoonCap]);
+  }, [shiftPeriodCaps, availableGrades, gradePeriodCaps]);
 
   // Phím tắt bàn phím:
   // - Alt + C: Bật / Tắt nhanh Modal cấu hình định mức ca học (Custom Shift Period Caps)
@@ -119,19 +163,6 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isSchoolModalOpen, isPeriodCapsModalOpen, handleOpenPeriodCapsModal]);
-
-  // Trích xuất danh sách Khối lớp tự động từ tên các lớp
-  const availableGrades = useMemo(() => {
-    const gradeSet = new Set<string>();
-    classes.forEach(cls => {
-      const match = cls.match(/^(\d+)/);
-      if (match) {
-        gradeSet.add(match[1]);
-      }
-    });
-    const list = Array.from(gradeSet).sort((a, b) => parseInt(a) - parseInt(b));
-    return list.length > 0 ? list : ['6', '7', '8', '9'];
-  }, [classes]);
 
   // Danh sách các lớp theo khối đang chọn hiển thị (trước khi lọc theo trạng thái quá tải)
   const currentGradeClasses = useMemo(() => {
@@ -163,41 +194,24 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
     }
   }, [schoolWideConstraint?.morningPeriodCap, schoolWideConstraint?.afternoonPeriodCap]);
 
-  // Lưu cấu hình định mức ca học
-  const handleSavePeriodCaps = () => {
-    const newCaps = { morningCap: tempMorningCap, afternoonCap: tempAfternoonCap };
-    setShiftPeriodCaps(newCaps);
-    try {
-      localStorage.setItem(STORAGE_KEY_SHIFT_CAPS, JSON.stringify(newCaps));
-    } catch (e) {
-      // ignore
+  // Lấy định mức số tiết cho một khối lớp cụ thể (Ưu tiên: Định mức Khối > Định mức Toàn trường)
+  const getGradePeriodCaps = useCallback((gr: string): { morningCap: number; afternoonCap: number } => {
+    if (gr && gradePeriodCaps[gr]) {
+      return gradePeriodCaps[gr];
     }
-
-    if (onBatchUpdateCustomClassShifts) {
-      const currentM = schoolWideConstraint?.morningDays !== undefined ? schoolWideConstraint.morningDays : [0, 1, 2, 3, 4];
-      const currentA = schoolWideConstraint?.afternoonDays !== undefined ? schoolWideConstraint.afternoonDays : [];
-      onBatchUpdateCustomClassShifts([], {
-        morningDays: currentM,
-        afternoonDays: currentA,
-        morningPeriodCap: tempMorningCap,
-        afternoonPeriodCap: tempAfternoonCap
-      } as any);
-    }
-
-    setToastMessage(`Đã cập nhật định mức ca học: Sáng tối đa ${tempMorningCap} tiết, Chiều tối đa ${tempAfternoonCap} tiết!`);
-    setTimeout(() => setToastMessage(null), 3500);
-    setIsPeriodCapsModalOpen(false);
-  };
-
-  // Khôi phục định mức mặc định (Sáng 5, Chiều 3)
-  const handleResetPeriodCaps = () => {
-    setTempMorningCap(5);
-    setTempAfternoonCap(3);
-  };
+    return shiftPeriodCaps;
+  }, [gradePeriodCaps, shiftPeriodCaps]);
 
   // Phân tích cấu hình ca học của từng lớp từ danh sách ràng buộc
   const classShiftMap = useMemo(() => {
-    const map = new Map<string, { morningDays: number[]; afternoonDays: number[]; constraintId?: string; isSchoolWide?: boolean }>();
+    const map = new Map<string, { 
+      morningDays: number[]; 
+      afternoonDays: number[]; 
+      constraintId?: string; 
+      isSchoolWide?: boolean;
+      morningPeriodCap?: number;
+      afternoonPeriodCap?: number;
+    }>();
 
     // 1. Phân tích cấu hình mặc định toàn trường (nếu có)
     let defaultMorningDays = [0, 1, 2, 3, 4];
@@ -236,20 +250,108 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
           aDays = [0, 1, 2, 3, 4];
         }
 
-        map.set(cls, { morningDays: mDays, afternoonDays: aDays, constraintId: c.id, isSchoolWide: false });
+        map.set(cls, { 
+          morningDays: mDays, 
+          afternoonDays: aDays, 
+          constraintId: c.id, 
+          isSchoolWide: false,
+          morningPeriodCap: c.morningPeriodCap,
+          afternoonPeriodCap: c.afternoonPeriodCap
+        });
       } else {
         // Kế thừa từ cấu hình Toàn trường (hoặc mặc định cả tuần)
         map.set(cls, { 
           morningDays: [...defaultMorningDays], 
           afternoonDays: [...defaultAfternoonDays],
           constraintId: schoolWideConstraint?.id,
-          isSchoolWide: !!schoolWideConstraint 
+          isSchoolWide: !!schoolWideConstraint,
+          morningPeriodCap: schoolWideConstraint?.morningPeriodCap,
+          afternoonPeriodCap: schoolWideConstraint?.afternoonPeriodCap
         });
       }
     });
 
     return map;
   }, [classes, constraints, schoolWideConstraint]);
+
+  // Lấy định mức số tiết cho một lớp cụ thể (Ưu tiên: Ràng buộc riêng của lớp > Định mức Khối > Định mức Toàn trường)
+  const getClassPeriodCaps = useCallback((cls: string): { morningCap: number; afternoonCap: number; source: 'class' | 'grade' | 'school' } => {
+    const classConstraint = classShiftMap.get(cls);
+    if (classConstraint?.morningPeriodCap && classConstraint?.afternoonPeriodCap) {
+      return { morningCap: classConstraint.morningPeriodCap, afternoonCap: classConstraint.afternoonPeriodCap, source: 'class' };
+    }
+    const match = cls.match(/^(\d+)/);
+    const gr = match ? match[1] : '';
+    if (gr && gradePeriodCaps[gr]) {
+      return { ...gradePeriodCaps[gr], source: 'grade' };
+    }
+    return { ...shiftPeriodCaps, source: 'school' };
+  }, [classShiftMap, gradePeriodCaps, shiftPeriodCaps]);
+
+  // Lưu cấu hình định mức ca học (Toàn trường & từng Khối lớp)
+  const handleSavePeriodCaps = () => {
+    const newCaps = { morningCap: tempMorningCap, afternoonCap: tempAfternoonCap };
+    setShiftPeriodCaps(newCaps);
+
+    // Lọc lại: chỉ lưu những khối có định mức khác biệt với toàn trường
+    const cleanedGradeCaps: Record<string, { morningCap: number; afternoonCap: number }> = {};
+    Object.entries(tempGradePeriodCaps).forEach(([gr, caps]) => {
+      if (caps && (caps.morningCap !== tempMorningCap || caps.afternoonCap !== tempAfternoonCap)) {
+        cleanedGradeCaps[gr] = caps;
+      }
+    });
+
+    try {
+      localStorage.setItem(STORAGE_KEY_SHIFT_CAPS, JSON.stringify(newCaps));
+      localStorage.setItem(STORAGE_KEY_GRADE_CAPS, JSON.stringify(cleanedGradeCaps));
+    } catch (e) {
+      // ignore
+    }
+    setGradePeriodCaps(cleanedGradeCaps);
+
+    if (onBatchUpdateCustomClassShifts) {
+      const currentM = schoolWideConstraint?.morningDays !== undefined ? schoolWideConstraint.morningDays : [0, 1, 2, 3, 4];
+      const currentA = schoolWideConstraint?.afternoonDays !== undefined ? schoolWideConstraint.afternoonDays : [];
+      
+      // Chuẩn bị cập nhật cho từng lớp theo định mức khối tương ứng
+      const classUpdates = classes.map(cls => {
+        const match = cls.match(/^(\d+)/);
+        const gr = match ? match[1] : '';
+        const cap = (gr && cleanedGradeCaps[gr]) ? cleanedGradeCaps[gr] : newCaps;
+        const conf = classShiftMap.get(cls) || { morningDays: currentM, afternoonDays: currentA };
+        return {
+          className: cls,
+          morningDays: conf.morningDays,
+          afternoonDays: conf.afternoonDays,
+          morningPeriodCap: cap.morningCap,
+          afternoonPeriodCap: cap.afternoonCap
+        };
+      });
+
+      onBatchUpdateCustomClassShifts(classUpdates, {
+        morningDays: currentM,
+        afternoonDays: currentA,
+        morningPeriodCap: tempMorningCap,
+        afternoonPeriodCap: tempAfternoonCap
+      });
+    }
+
+    const customGrades = Object.keys(cleanedGradeCaps);
+    setToastMessage(
+      customGrades.length > 0
+        ? `Đã lưu định mức ca học thành công (Tùy biến riêng ${customGrades.length} khối: ${customGrades.map(g => `K${g} [${cleanedGradeCaps[g].morningCap}s/${cleanedGradeCaps[g].afternoonCap}c]`).join(', ')})!`
+        : `Đã cập nhật định mức ca học Toàn trường: Sáng ${tempMorningCap} tiết, Chiều ${tempAfternoonCap} tiết!`
+    );
+    setTimeout(() => setToastMessage(null), 3500);
+    setIsPeriodCapsModalOpen(false);
+  };
+
+  // Khôi phục định mức mặc định (Sáng 5, Chiều 3 cho tất cả các khối)
+  const handleResetPeriodCaps = () => {
+    setTempMorningCap(5);
+    setTempAfternoonCap(3);
+    setTempGradePeriodCaps({});
+  };
 
   // Tính số tiết phân công của từng lớp
   const classSessionsMap = useMemo(() => {
@@ -273,7 +375,8 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
 
     targetClasses.forEach(cls => {
       const conf = classShiftMap.get(cls) || { morningDays: [0, 1, 2, 3, 4], afternoonDays: [0, 1, 2, 3, 4] };
-      const cap = conf.morningDays.length * shiftPeriodCaps.morningCap + conf.afternoonDays.length * shiftPeriodCaps.afternoonCap;
+      const caps = getClassPeriodCaps(cls);
+      const cap = conf.morningDays.length * caps.morningCap + conf.afternoonDays.length * caps.afternoonCap;
       const assigned = classSessionsMap.get(cls) || 0;
 
       totalAssigned += assigned;
@@ -310,7 +413,7 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
       totalAssigned,
       totalCapacity
     };
-  }, [currentGradeClasses, classShiftMap, classSessionsMap, shiftPeriodCaps]);
+  }, [currentGradeClasses, classShiftMap, classSessionsMap, getClassPeriodCaps]);
 
   // Lọc danh sách lớp hiển thị trên bảng (có tính năng lọc chỉ xem các lớp quá tải)
   const filteredClasses = useMemo(() => {
@@ -324,16 +427,17 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
   const handleAutoResolveOverloadedClasses = () => {
     if (capacityStats.overloadedList.length === 0) return;
 
-    const updates: { className: string; morningDays: number[]; afternoonDays: number[] }[] = [];
+    const updates: { className: string; morningDays: number[]; afternoonDays: number[]; morningPeriodCap?: number; afternoonPeriodCap?: number }[] = [];
 
     capacityStats.overloadedList.forEach(item => {
       const conf = classShiftMap.get(item.className) || { morningDays: [0, 1, 2, 3, 4], afternoonDays: [] };
+      const caps = getClassPeriodCaps(item.className);
       let newM = [...conf.morningDays];
       let newA = [...conf.afternoonDays];
 
-      // 1. Ưu tiên bật các buổi sáng chưa học (mỗi buổi sáng +morningCap tiết)
+      // 1. Ưu tiên bật các buổi sáng chưa học (mỗi buổi sáng +caps.morningCap tiết)
       for (let d = 0; d < 5; d++) {
-        const curCap = newM.length * shiftPeriodCaps.morningCap + newA.length * shiftPeriodCaps.afternoonCap;
+        const curCap = newM.length * caps.morningCap + newA.length * caps.afternoonCap;
         if (curCap >= item.assigned) break;
         if (!newM.includes(d)) {
           newM.push(d);
@@ -344,7 +448,7 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
       // 2. Bổ sung các buổi chiều theo thứ tự sư phạm tối ưu: T3 (1), T5 (3), T2 (0), T4 (2), T6 (4)
       const afternoonPriority = [1, 3, 0, 2, 4];
       for (const d of afternoonPriority) {
-        const curCap = newM.length * shiftPeriodCaps.morningCap + newA.length * shiftPeriodCaps.afternoonCap;
+        const curCap = newM.length * caps.morningCap + newA.length * caps.afternoonCap;
         if (curCap >= item.assigned) break;
         if (!newA.includes(d)) {
           newA.push(d);
@@ -355,7 +459,9 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
       updates.push({
         className: item.className,
         morningDays: newM,
-        afternoonDays: newA
+        afternoonDays: newA,
+        morningPeriodCap: caps.morningCap,
+        afternoonPeriodCap: caps.afternoonCap
       });
     });
 
@@ -458,7 +564,18 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
     const targetClasses = getTargetClassesForGrade(gr);
     if (targetClasses.length === 0) return;
 
-    if (onBatchUpdateClassShifts) {
+    const grCaps = gr === 'ALL' ? shiftPeriodCaps : getGradePeriodCaps(gr);
+
+    if (onBatchUpdateCustomClassShifts) {
+      const updates = targetClasses.map(cls => ({
+        className: cls,
+        morningDays: batchMorningDays,
+        afternoonDays: batchAfternoonDays,
+        morningPeriodCap: grCaps.morningCap,
+        afternoonPeriodCap: grCaps.afternoonCap
+      }));
+      onBatchUpdateCustomClassShifts(updates);
+    } else if (onBatchUpdateClassShifts) {
       onBatchUpdateClassShifts(targetClasses, batchMorningDays, batchAfternoonDays);
     } else if (onUpdateClassShift) {
       targetClasses.forEach(cls => onUpdateClassShift(cls, batchMorningDays, batchAfternoonDays));
@@ -491,23 +608,25 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
     if (!isSchoolModalOpen) return [];
     const list: { className: string; assigned: number; missing: number }[] = [];
     classes.forEach(cls => {
+      const caps = getClassPeriodCaps(cls);
       const isOverride = individualOverrideClasses.includes(cls);
       if (!resetOverrides && isOverride) {
         const conf = classShiftMap.get(cls);
         if (conf) {
-          const cCap = conf.morningDays.length * shiftPeriodCaps.morningCap + conf.afternoonDays.length * shiftPeriodCaps.afternoonCap;
+          const cCap = conf.morningDays.length * caps.morningCap + conf.afternoonDays.length * caps.afternoonCap;
           const assigned = classSessionsMap.get(cls) || 0;
           if (assigned > cCap) list.push({ className: cls, assigned, missing: assigned - cCap });
         }
       } else {
         const assigned = classSessionsMap.get(cls) || 0;
-        if (assigned > modalCapacity) {
-          list.push({ className: cls, assigned, missing: assigned - modalCapacity });
+        const modalCapForClass = modalMorningDays.length * caps.morningCap + modalAfternoonDays.length * caps.afternoonCap;
+        if (assigned > modalCapForClass) {
+          list.push({ className: cls, assigned, missing: assigned - modalCapForClass });
         }
       }
     });
     return list;
-  }, [isSchoolModalOpen, modalCapacity, resetOverrides, classes, individualOverrideClasses, classShiftMap, classSessionsMap, shiftPeriodCaps]);
+  }, [isSchoolModalOpen, modalMorningDays, modalAfternoonDays, resetOverrides, classes, individualOverrideClasses, classShiftMap, classSessionsMap, getClassPeriodCaps]);
 
   // Mở modal áp dụng nhanh ca học Toàn trường
   const handleOpenSchoolShiftModal = () => {
@@ -836,10 +955,15 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
                     type="button"
                     onClick={handleOpenPeriodCapsModal}
                     className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-teal-200/90 hover:bg-teal-300 text-teal-950 font-bold text-xs border border-teal-400/80 transition-all cursor-pointer shadow-2xs group active:scale-95"
-                    title="Click trực tiếp hoặc nhấn Alt+C để mở cấu hình định mức số tiết ca học"
+                    title="Click trực tiếp hoặc nhấn Alt+C để mở cấu hình định mức số tiết ca học (Toàn trường & từng Khối)"
                   >
                     <span className="group-hover:rotate-45 transition-transform">⚙️</span>
                     <span>Định mức: Sáng {shiftPeriodCaps.morningCap}t, Chiều {shiftPeriodCaps.afternoonCap}t</span>
+                    {Object.keys(gradePeriodCaps).length > 0 && (
+                      <span className="px-1.5 py-0.2 rounded text-[10px] bg-amber-300 text-amber-950 font-black border border-amber-400">
+                        +{Object.keys(gradePeriodCaps).length} khối riêng
+                      </span>
+                    )}
                     <kbd className="text-[10px] bg-teal-100/90 text-teal-900 px-1 py-0.2 rounded border border-teal-300/80 font-mono font-bold">Alt+C</kbd>
                   </button>
                 </div>
@@ -858,10 +982,15 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
                     type="button"
                     onClick={handleOpenPeriodCapsModal}
                     className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-gray-200/90 hover:bg-teal-100 hover:text-teal-950 hover:border-teal-300 text-gray-700 font-bold text-xs border border-gray-300 transition-all cursor-pointer shadow-2xs group active:scale-95"
-                    title="Click trực tiếp hoặc nhấn Alt+C để mở cấu hình định mức số tiết ca học"
+                    title="Click trực tiếp hoặc nhấn Alt+C để mở cấu hình định mức số tiết ca học (Toàn trường & từng Khối)"
                   >
                     <span className="group-hover:rotate-45 transition-transform">⚙️</span>
                     <span>Định mức: Sáng {shiftPeriodCaps.morningCap}t, Chiều {shiftPeriodCaps.afternoonCap}t</span>
+                    {Object.keys(gradePeriodCaps).length > 0 && (
+                      <span className="px-1.5 py-0.2 rounded text-[10px] bg-amber-200 text-amber-900 font-bold border border-amber-300">
+                        +{Object.keys(gradePeriodCaps).length} khối riêng
+                      </span>
+                    )}
                     <kbd className="text-[10px] bg-white text-gray-600 px-1 py-0.2 rounded border border-gray-300 font-mono font-bold">Alt+C</kbd>
                   </button>
                 </div>
@@ -889,10 +1018,15 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
               type="button"
               onClick={handleOpenPeriodCapsModal}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-800 active:scale-95 text-white text-xs font-bold shadow-xs hover:shadow transition-all cursor-pointer group"
-              title="Cài đặt số tiết tối đa có thể xếp cho mỗi ca Sáng và Chiều (Phím tắt: Alt + C)"
+              title="Cài đặt số tiết tối đa có thể xếp cho mỗi ca Sáng và Chiều (Toàn trường & Từng Khối) (Phím tắt: Alt + C)"
             >
               <span className="group-hover:rotate-45 transition-transform">⚙️</span>
               <span>Định mức: Sáng {shiftPeriodCaps.morningCap}t, Chiều {shiftPeriodCaps.afternoonCap}t</span>
+              {Object.keys(gradePeriodCaps).length > 0 && (
+                <span className="px-1.5 py-0.2 rounded text-[10px] bg-amber-400 text-slate-900 font-black">
+                  +{Object.keys(gradePeriodCaps).length} khối riêng
+                </span>
+              )}
               <kbd className="text-[10px] bg-slate-600/90 px-1.5 py-0.5 rounded font-mono text-slate-200 border border-slate-500 font-bold">Alt+C</kbd>
             </button>
 
@@ -1030,101 +1164,107 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
                         </div>
 
                         {/* Bảng chọn Thứ Sáng & Chiều tùy chỉnh */}
-                        <div className="space-y-2.5 bg-gray-50 p-3 rounded-xl border border-gray-200 mb-3.5">
-                          {/* Buổi Sáng */}
-                          <div>
-                            <div className="flex items-center justify-between mb-1.5">
-                              <span className="text-[11px] font-bold text-teal-900 flex items-center gap-1">
-                                <span>🌅</span> Buổi Sáng (Tiết 1-{shiftPeriodCaps.morningCap})
-                              </span>
-                              <div className="flex items-center gap-1.5 text-[10px]">
-                                <button
-                                  type="button"
-                                  onClick={() => setBatchMorningDays([0, 1, 2, 3, 4])}
-                                  className="text-teal-700 hover:underline"
-                                >
-                                  T2-T6
-                                </button>
-                                <span className="text-gray-300">|</span>
-                                <button
-                                  type="button"
-                                  onClick={() => setBatchMorningDays([])}
-                                  className="text-gray-500 hover:underline"
-                                >
-                                  Nghỉ
-                                </button>
+                        {(() => {
+                          const currentGrCaps = gr === 'ALL' ? shiftPeriodCaps : getGradePeriodCaps(gr);
+                          return (
+                            <div className="space-y-2.5 bg-gray-50 p-3 rounded-xl border border-gray-200 mb-3.5">
+                              {/* Buổi Sáng */}
+                              <div>
+                                <div className="flex items-center justify-between mb-1.5">
+                                  <span className="text-[11px] font-bold text-teal-900 flex items-center gap-1">
+                                    <span>🌅</span> Buổi Sáng (Tiết 1-{currentGrCaps.morningCap})
+                                  </span>
+                                  <div className="flex items-center gap-1.5 text-[10px]">
+                                    <button
+                                      type="button"
+                                      onClick={() => setBatchMorningDays([0, 1, 2, 3, 4])}
+                                      className="text-teal-700 hover:underline"
+                                    >
+                                      T2-T6
+                                    </button>
+                                    <span className="text-gray-300">|</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setBatchMorningDays([])}
+                                      className="text-gray-500 hover:underline"
+                                    >
+                                      Nghỉ
+                                    </button>
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-5 gap-1">
+                                  {[0, 1, 2, 3, 4].map(d => {
+                                    const active = batchMorningDays.includes(d);
+                                    return (
+                                      <button
+                                        type="button"
+                                        key={d}
+                                        onClick={() => toggleBatchMorningDay(d)}
+                                        className={`py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                          active
+                                            ? 'bg-teal-600 text-white shadow-xs scale-102'
+                                            : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-100'
+                                        }`}
+                                      >
+                                        {DAYS[d]}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
                               </div>
-                            </div>
-                            <div className="grid grid-cols-5 gap-1">
-                              {[0, 1, 2, 3, 4].map(d => {
-                                const active = batchMorningDays.includes(d);
-                                return (
-                                  <button
-                                    type="button"
-                                    key={d}
-                                    onClick={() => toggleBatchMorningDay(d)}
-                                    className={`py-1.5 rounded-lg text-xs font-bold transition-all ${
-                                      active
-                                        ? 'bg-teal-600 text-white shadow-xs scale-102'
-                                        : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-100'
-                                    }`}
-                                  >
-                                    {DAYS[d]}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
 
-                          {/* Buổi Chiều */}
-                          <div className="pt-2 border-t border-gray-200/80">
-                            <div className="flex items-center justify-between mb-1.5">
-                              <span className="text-[11px] font-bold text-amber-900 flex items-center gap-1">
-                                <span>🌇</span> Buổi Chiều (Tiết 1-{shiftPeriodCaps.afternoonCap})
-                              </span>
-                              <div className="flex items-center gap-1.5 text-[10px]">
-                                <button
-                                  type="button"
-                                  onClick={() => setBatchAfternoonDays([0, 1, 2, 3, 4])}
-                                  className="text-amber-700 hover:underline"
-                                >
-                                  T2-T6
-                                </button>
-                                <span className="text-gray-300">|</span>
-                                <button
-                                  type="button"
-                                  onClick={() => setBatchAfternoonDays([])}
-                                  className="text-gray-500 hover:underline"
-                                >
-                                  Nghỉ
-                                </button>
+                              {/* Buổi Chiều */}
+                              <div className="pt-2 border-t border-gray-200/80">
+                                <div className="flex items-center justify-between mb-1.5">
+                                  <span className="text-[11px] font-bold text-amber-900 flex items-center gap-1">
+                                    <span>🌇</span> Buổi Chiều (Tiết 1-{currentGrCaps.afternoonCap})
+                                  </span>
+                                  <div className="flex items-center gap-1.5 text-[10px]">
+                                    <button
+                                      type="button"
+                                      onClick={() => setBatchAfternoonDays([0, 1, 2, 3, 4])}
+                                      className="text-amber-700 hover:underline"
+                                    >
+                                      T2-T6
+                                    </button>
+                                    <span className="text-gray-300">|</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setBatchAfternoonDays([])}
+                                      className="text-gray-500 hover:underline"
+                                    >
+                                      Nghỉ
+                                    </button>
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-5 gap-1">
+                                  {[0, 1, 2, 3, 4].map(d => {
+                                    const active = batchAfternoonDays.includes(d);
+                                    return (
+                                      <button
+                                        type="button"
+                                        key={d}
+                                        onClick={() => toggleBatchAfternoonDay(d)}
+                                        className={`py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                          active
+                                            ? 'bg-amber-600 text-white shadow-xs scale-102'
+                                            : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-100'
+                                        }`}
+                                      >
+                                        {DAYS[d]}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
                               </div>
                             </div>
-                            <div className="grid grid-cols-5 gap-1">
-                              {[0, 1, 2, 3, 4].map(d => {
-                                const active = batchAfternoonDays.includes(d);
-                                return (
-                                  <button
-                                    type="button"
-                                    key={d}
-                                    onClick={() => toggleBatchAfternoonDay(d)}
-                                    className={`py-1.5 rounded-lg text-xs font-bold transition-all ${
-                                      active
-                                        ? 'bg-amber-600 text-white shadow-xs scale-102'
-                                        : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-100'
-                                    }`}
-                                  >
-                                    {DAYS[d]}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        </div>
+                          );
+                        })()}
 
                         {/* Sức chứa và Nút Áp dụng */}
                         {(() => {
-                          const projectedBatchCap = batchMorningDays.length * shiftPeriodCaps.morningCap + batchAfternoonDays.length * shiftPeriodCaps.afternoonCap;
+                          const currentGrCaps = gr === 'ALL' ? shiftPeriodCaps : getGradePeriodCaps(gr);
+                          const projectedBatchCap = batchMorningDays.length * currentGrCaps.morningCap + batchAfternoonDays.length * currentGrCaps.afternoonCap;
                           const targetGradeClasses = getTargetClassesForGrade(gr);
                           const simulatedBatchOverloaded = targetGradeClasses.filter(c => {
                             const ass = classSessionsMap.get(c) || 0;
@@ -1374,11 +1514,15 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
           <span className="font-semibold text-gray-700">Chú giải:</span>
           <span className="inline-flex items-center gap-1.5">
             <span className="w-4 h-4 rounded bg-teal-600 border border-teal-700 inline-flex items-center justify-center text-[10px] text-white font-bold" style={{ backgroundColor: '#0d9488', color: '#ffffff' }}>✓</span>
-            <span className="font-medium text-teal-900">Bật ca Sáng (Tiết 1-{shiftPeriodCaps.morningCap})</span>
+            <span className="font-medium text-teal-900">
+              Bật ca Sáng ({selectedGrade !== 'ALL' ? `Tiết 1-${getGradePeriodCaps(selectedGrade).morningCap}` : `Tiết 1-${shiftPeriodCaps.morningCap}`})
+            </span>
           </span>
           <span className="inline-flex items-center gap-1.5">
             <span className="w-4 h-4 rounded bg-amber-600 border border-amber-700 inline-flex items-center justify-center text-[10px] text-white font-bold" style={{ backgroundColor: '#d97706', color: '#ffffff' }}>✓</span>
-            <span className="font-medium text-amber-900">Bật ca Chiều (Tiết 1-{shiftPeriodCaps.afternoonCap})</span>
+            <span className="font-medium text-amber-900">
+              Bật ca Chiều ({selectedGrade !== 'ALL' ? `Tiết 1-${getGradePeriodCaps(selectedGrade).afternoonCap}` : `Tiết 1-${shiftPeriodCaps.afternoonCap}`})
+            </span>
           </span>
           <span className="inline-flex items-center gap-1.5">
             <span className="w-4 h-4 rounded bg-slate-100 border border-slate-300 inline-flex items-center justify-center text-[10px] text-slate-500 font-bold" style={{ backgroundColor: '#f1f5f9', color: '#64748b' }}>—</span>
@@ -1647,8 +1791,9 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
                 const morningDays = config.morningDays;
                 const afternoonDays = config.afternoonDays;
 
+                const caps = getClassPeriodCaps(cls);
                 const assignedSessions = classSessionsMap.get(cls) || 0;
-                const capacity = (morningDays.length * shiftPeriodCaps.morningCap) + (afternoonDays.length * shiftPeriodCaps.afternoonCap);
+                const capacity = (morningDays.length * caps.morningCap) + (afternoonDays.length * caps.afternoonCap);
                 const isOverloaded = assignedSessions > capacity;
                 const isTight = capacity - assignedSessions <= 2 && !isOverloaded;
 
@@ -1662,6 +1807,22 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
                     <td className="p-2.5 font-bold text-gray-900 border-r border-gray-200 sticky left-0 bg-inherit z-10 text-center">
                       <div className="flex items-center justify-center gap-1">
                         <span>{cls}</span>
+                        {caps.source === 'grade' && (
+                          <span 
+                            className="text-[9px] px-1 py-0.2 rounded bg-amber-100 text-amber-900 font-bold border border-amber-300"
+                            title={`Đang áp dụng định mức riêng của Khối: Sáng ${caps.morningCap}t, Chiều ${caps.afternoonCap}t`}
+                          >
+                            K{caps.morningCap}s/{caps.afternoonCap}c
+                          </span>
+                        )}
+                        {caps.source === 'class' && (
+                          <span 
+                            className="text-[9px] px-1 py-0.2 rounded bg-teal-100 text-teal-900 font-bold border border-teal-300"
+                            title={`Đang áp dụng định mức riêng của Lớp: Sáng ${caps.morningCap}t, Chiều ${caps.afternoonCap}t`}
+                          >
+                            L{caps.morningCap}s/{caps.afternoonCap}c
+                          </span>
+                        )}
                         {isOverloaded && (
                           <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" title="Cảnh báo: Thiếu sức chứa ca học!" />
                         )}
@@ -1706,8 +1867,8 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
 
                       {/* Phân rã số buổi sáng / chiều */}
                       <div className="flex items-center justify-between text-[9px] text-gray-500 font-medium mt-1">
-                        <span>🌅 {morningDays.length} sáng ({morningDays.length * shiftPeriodCaps.morningCap}t)</span>
-                        <span>🌇 {afternoonDays.length} chiều ({afternoonDays.length * shiftPeriodCaps.afternoonCap}t)</span>
+                        <span>🌅 {morningDays.length} sáng ({morningDays.length * caps.morningCap}t)</span>
+                        <span>🌇 {afternoonDays.length} chiều ({afternoonDays.length * caps.afternoonCap}t)</span>
                       </div>
                     </td>
 
@@ -2133,7 +2294,7 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
           onClick={() => setIsPeriodCapsModalOpen(false)}
         >
           <div 
-            className="bg-white rounded-2xl shadow-2xl max-w-xl w-full border border-gray-200 overflow-hidden flex flex-col max-h-[90vh]"
+            className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full border border-gray-200 overflow-hidden flex flex-col max-h-[92vh]"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header Modal */}
@@ -2150,7 +2311,7 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
                     </span>
                   </h3>
                   <p className="text-xs text-slate-300 mt-0.5">
-                    Tùy chỉnh số tiết tối đa có thể xếp cho ca Sáng và ca Chiều
+                    Tùy chỉnh số tiết tối đa có thể xếp cho ca Sáng và ca Chiều (Toàn trường & Từng Khối lớp)
                   </p>
                 </div>
               </div>
@@ -2164,221 +2325,498 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
               </button>
             </div>
 
+            {/* Thanh Tab Switcher */}
+            <div className="flex border-b border-gray-200 bg-slate-100/90 px-4 pt-2 gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => setActiveCapTab('school')}
+                className={`px-4 py-2.5 text-xs font-bold border-b-2 -mb-px flex items-center gap-2 transition-all cursor-pointer ${
+                  activeCapTab === 'school'
+                    ? 'border-teal-600 text-teal-900 bg-white rounded-t-xl shadow-2xs'
+                    : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded-t-xl'
+                }`}
+              >
+                <span>🏫</span>
+                <span>Định mức Toàn trường</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-teal-100 text-teal-800 font-extrabold">
+                  {tempMorningCap}s / {tempAfternoonCap}c
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveCapTab('grade')}
+                className={`px-4 py-2.5 text-xs font-bold border-b-2 -mb-px flex items-center gap-2 transition-all cursor-pointer ${
+                  activeCapTab === 'grade'
+                    ? 'border-teal-600 text-teal-900 bg-white rounded-t-xl shadow-2xs'
+                    : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded-t-xl'
+                }`}
+              >
+                <span>🎯</span>
+                <span>Định mức theo từng Khối ({availableGrades.length} khối)</span>
+                {Object.keys(tempGradePeriodCaps).length > 0 ? (
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-200 text-amber-900 font-black border border-amber-300">
+                    {Object.keys(tempGradePeriodCaps).length} tùy biến
+                  </span>
+                ) : (
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-600 font-semibold">
+                    Theo trường
+                  </span>
+                )}
+              </button>
+            </div>
+
             {/* Body Modal */}
-            <div className="p-5 overflow-y-auto space-y-5 text-sm">
-              {/* Giới thiệu tính năng */}
-              <div className="p-3 bg-teal-50 rounded-xl border border-teal-200 text-teal-950 text-xs flex items-start gap-2.5">
-                <span className="text-base mt-0.5">💡</span>
-                <div className="space-y-1">
-                  <p className="font-bold">Định mức ca học áp dụng toàn diện:</p>
-                  <p className="text-teal-800 leading-relaxed">
-                    Hệ thống sẽ dùng định mức này để tự động tính toán tổng sức chứa tuần của từng lớp, thanh tiến độ, cảnh báo sớm thiếu tiết và giới hạn số tiết khi xếp thời khóa biểu.
-                  </p>
-                </div>
-              </div>
-
-              {/* Nhóm 1: Ca Buổi Sáng */}
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-black uppercase text-slate-800 tracking-wider flex items-center gap-1.5">
-                    <span>🌅</span>
-                    <span>Ca Buổi Sáng (Tiết bắt đầu từ 07:15)</span>
-                  </label>
-                  <span className="text-xs font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
-                    Đang chọn: {tempMorningCap} tiết/buổi
-                  </span>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-3">
-                  {/* Tùy chọn 5 tiết */}
-                  <button
-                    type="button"
-                    onClick={() => setTempMorningCap(5)}
-                    className={`p-3 rounded-xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
-                      tempMorningCap === 5
-                        ? 'border-teal-600 bg-teal-50/60 shadow-sm ring-1 ring-teal-500'
-                        : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-black text-sm text-slate-900">5 tiết / buổi</span>
-                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-teal-100 text-teal-800 border border-teal-300">
-                        Phổ biến nhất
-                      </span>
+            <div className="p-5 overflow-y-auto space-y-5 text-sm flex-1">
+              {activeCapTab === 'school' ? (
+                <>
+                  {/* Giới thiệu tính năng toàn trường */}
+                  <div className="p-3 bg-teal-50 rounded-xl border border-teal-200 text-teal-950 text-xs flex items-start gap-2.5">
+                    <span className="text-base mt-0.5">💡</span>
+                    <div className="space-y-1">
+                      <p className="font-bold">Định mức áp dụng toàn diện:</p>
+                      <p className="text-teal-800 leading-relaxed">
+                        Hệ thống sẽ dùng định mức này làm chuẩn chung cho toàn trường và cho các khối lớp không thiết lập định mức riêng. Dùng để tính toán sức chứa, cảnh báo sớm thiếu tiết và giới hạn số tiết khi xếp thời khóa biểu.
+                      </p>
                     </div>
-                    <p className="text-[11px] text-slate-600 mt-1">
-                      Tiết 1 đến Tiết 5 (Chuẩn cho THCS & THPT)
-                    </p>
-                  </button>
-
-                  {/* Tùy chọn 4 tiết */}
-                  <button
-                    type="button"
-                    onClick={() => setTempMorningCap(4)}
-                    className={`p-3 rounded-xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
-                      tempMorningCap === 4
-                        ? 'border-teal-600 bg-teal-50/60 shadow-sm ring-1 ring-teal-500'
-                        : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-black text-sm text-slate-900">4 tiết / buổi</span>
-                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 border border-slate-300">
-                        Giảm tải / Tiểu học
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-600 mt-1">
-                      Tiết 1 đến Tiết 4 (Sáng 5 nghỉ)
-                    </p>
-                  </button>
-                </div>
-              </div>
-
-              {/* Nhóm 2: Ca Buổi Chiều */}
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-black uppercase text-slate-800 tracking-wider flex items-center gap-1.5">
-                    <span>🌇</span>
-                    <span>Ca Buổi Chiều (Tiết bắt đầu từ 13:30)</span>
-                  </label>
-                  <span className="text-xs font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                    Đang chọn: {tempAfternoonCap} tiết/buổi
-                  </span>
-                </div>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                  {/* Tùy chọn 3 tiết */}
-                  <button
-                    type="button"
-                    onClick={() => setTempAfternoonCap(3)}
-                    className={`p-3 rounded-xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
-                      tempAfternoonCap === 3
-                        ? 'border-amber-600 bg-amber-50/60 shadow-sm ring-1 ring-amber-500'
-                        : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-black text-sm text-slate-900">3 tiết / buổi</span>
-                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300">
-                        Khuyên dùng
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-600 mt-1">
-                      Tiết 1 đến Tiết 3 (13h30 - 16h00)
-                    </p>
-                  </button>
-
-                  {/* Tùy chọn 4 tiết */}
-                  <button
-                    type="button"
-                    onClick={() => setTempAfternoonCap(4)}
-                    className={`p-3 rounded-xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
-                      tempAfternoonCap === 4
-                        ? 'border-amber-600 bg-amber-50/60 shadow-sm ring-1 ring-amber-500'
-                        : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-black text-sm text-slate-900">4 tiết / buổi</span>
-                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 border border-slate-300">
-                        Bán trú
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-600 mt-1">
-                      Tiết 1 đến Tiết 4 (Tăng cường nhiều)
-                    </p>
-                  </button>
-
-                  {/* Tùy chọn 2 tiết */}
-                  <button
-                    type="button"
-                    onClick={() => setTempAfternoonCap(2)}
-                    className={`p-3 rounded-xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
-                      tempAfternoonCap === 2
-                        ? 'border-amber-600 bg-amber-50/60 shadow-sm ring-1 ring-amber-500'
-                        : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-black text-sm text-slate-900">2 tiết / buổi</span>
-                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 border border-slate-300">
-                        Ca ngắn
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-600 mt-1">
-                      Tiết 1 đến Tiết 2 (CLB / Học phụ đạo)
-                    </p>
-                  </button>
-                </div>
-              </div>
-
-              {/* Bảng Xem Trước Sức Chứa Mẫu (Live Capacity Preview) */}
-              <div className="p-3.5 bg-slate-100 rounded-xl border border-slate-200 space-y-2">
-                <div className="font-bold text-xs text-slate-700 uppercase tracking-wider flex items-center justify-between">
-                  <span>📊 Xem trước sức chứa theo định mức mới:</span>
-                  <span className="text-teal-700 font-extrabold normal-case text-xs">
-                    Sáng {tempMorningCap}t + Chiều {tempAfternoonCap}t
-                  </span>
-                </div>
-                
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
-                  <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
-                    <div className="text-slate-500 text-[10px]">1 Ngày (Cả 2 ca)</div>
-                    <div className="font-black text-teal-800 text-sm">{tempMorningCap + tempAfternoonCap} tiết</div>
                   </div>
-                  <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
-                    <div className="text-slate-500 text-[10px]">Tuần chỉ học Sáng (5b)</div>
-                    <div className="font-black text-teal-800 text-sm">{tempMorningCap * 5} tiết</div>
-                  </div>
-                  <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
-                    <div className="text-slate-500 text-[10px]">Sáng 5b + Chiều 2b</div>
-                    <div className="font-black text-teal-800 text-sm">{tempMorningCap * 5 + tempAfternoonCap * 2} tiết</div>
-                  </div>
-                  <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
-                    <div className="text-slate-500 text-[10px]">Cả tuần (5 Sáng + 5 Chiều)</div>
-                    <div className="font-black text-teal-800 text-sm">{(tempMorningCap + tempAfternoonCap) * 5} tiết</div>
-                  </div>
-                </div>
 
-                {/* Kiểm tra cảnh báo lớp bị thiếu tiết nếu áp dụng định mức này */}
-                {(() => {
-                  const simulatedOverloadedWithNewCap = classes.filter(cls => {
-                    const conf = classShiftMap.get(cls) || { morningDays: [0, 1, 2, 3, 4], afternoonDays: [] };
-                    const cap = conf.morningDays.length * tempMorningCap + conf.afternoonDays.length * tempAfternoonCap;
-                    const assigned = classSessionsMap.get(cls) || 0;
-                    return assigned > cap;
-                  });
+                  {/* Nhóm 1: Ca Buổi Sáng Toàn trường */}
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-black uppercase text-slate-800 tracking-wider flex items-center gap-1.5">
+                        <span>🌅</span>
+                        <span>Ca Buổi Sáng Toàn trường (Tiết bắt đầu từ 07:15)</span>
+                      </label>
+                      <span className="text-xs font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
+                        Đang chọn: {tempMorningCap} tiết/buổi
+                      </span>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* Tùy chọn 5 tiết */}
+                      <button
+                        type="button"
+                        onClick={() => setTempMorningCap(5)}
+                        className={`p-3 rounded-xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
+                          tempMorningCap === 5
+                            ? 'border-teal-600 bg-teal-50/60 shadow-sm ring-1 ring-teal-500'
+                            : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-black text-sm text-slate-900">5 tiết / buổi</span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-teal-100 text-teal-800 border border-teal-300">
+                            Phổ biến nhất
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-600 mt-1">
+                          Tiết 1 đến Tiết 5 (Chuẩn cho THCS & THPT)
+                        </p>
+                      </button>
 
-                  if (simulatedOverloadedWithNewCap.length > 0) {
-                    return (
-                      <div className="mt-2 p-2 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-[11px] flex items-center gap-2">
-                        <span>⚠️</span>
-                        <span>
-                          <strong>Lưu ý:</strong> Với định mức này, sẽ có <strong>{simulatedOverloadedWithNewCap.length} lớp</strong> ({simulatedOverloadedWithNewCap.slice(0, 3).join(', ')}{simulatedOverloadedWithNewCap.length > 3 ? '...' : ''}) bị thiếu tiết nếu không bật thêm ca học.
-                        </span>
+                      {/* Tùy chọn 4 tiết */}
+                      <button
+                        type="button"
+                        onClick={() => setTempMorningCap(4)}
+                        className={`p-3 rounded-xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
+                          tempMorningCap === 4
+                            ? 'border-teal-600 bg-teal-50/60 shadow-sm ring-1 ring-teal-500'
+                            : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-black text-sm text-slate-900">4 tiết / buổi</span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 border border-slate-300">
+                            Giảm tải / Tiểu học
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-600 mt-1">
+                          Tiết 1 đến Tiết 4 (Sáng 5 nghỉ)
+                        </p>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Nhóm 2: Ca Buổi Chiều Toàn trường */}
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-black uppercase text-slate-800 tracking-wider flex items-center gap-1.5">
+                        <span>🌇</span>
+                        <span>Ca Buổi Chiều Toàn trường (Tiết bắt đầu từ 13:30)</span>
+                      </label>
+                      <span className="text-xs font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                        Đang chọn: {tempAfternoonCap} tiết/buổi
+                      </span>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      {/* Tùy chọn 3 tiết */}
+                      <button
+                        type="button"
+                        onClick={() => setTempAfternoonCap(3)}
+                        className={`p-3 rounded-xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
+                          tempAfternoonCap === 3
+                            ? 'border-amber-600 bg-amber-50/60 shadow-sm ring-1 ring-amber-500'
+                            : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-black text-sm text-slate-900">3 tiết / buổi</span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                            Khuyên dùng
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-600 mt-1">
+                          Tiết 1 đến Tiết 3 (13h30 - 16h00)
+                        </p>
+                      </button>
+
+                      {/* Tùy chọn 4 tiết */}
+                      <button
+                        type="button"
+                        onClick={() => setTempAfternoonCap(4)}
+                        className={`p-3 rounded-xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
+                          tempAfternoonCap === 4
+                            ? 'border-amber-600 bg-amber-50/60 shadow-sm ring-1 ring-amber-500'
+                            : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-black text-sm text-slate-900">4 tiết / buổi</span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 border border-slate-300">
+                            Bán trú
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-600 mt-1">
+                          Tiết 1 đến Tiết 4 (Tăng cường nhiều)
+                        </p>
+                      </button>
+
+                      {/* Tùy chọn 2 tiết */}
+                      <button
+                        type="button"
+                        onClick={() => setTempAfternoonCap(2)}
+                        className={`p-3 rounded-xl border-2 text-left transition-all cursor-pointer flex flex-col justify-between ${
+                          tempAfternoonCap === 2
+                            ? 'border-amber-600 bg-amber-50/60 shadow-sm ring-1 ring-amber-500'
+                            : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-black text-sm text-slate-900">2 tiết / buổi</span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 border border-slate-300">
+                            Ca ngắn
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-600 mt-1">
+                          Tiết 1 đến Tiết 2 (CLB / Phụ đạo)
+                        </p>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Bảng Xem Trước Sức Chứa Mẫu Toàn trường (Live Capacity Preview) */}
+                  <div className="p-3.5 bg-slate-100 rounded-xl border border-slate-200 space-y-2">
+                    <div className="font-bold text-xs text-slate-700 uppercase tracking-wider flex items-center justify-between">
+                      <span>📊 Xem trước sức chứa theo định mức Toàn trường:</span>
+                      <span className="text-teal-700 font-extrabold normal-case text-xs">
+                        Sáng {tempMorningCap}t + Chiều {tempAfternoonCap}t
+                      </span>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+                      <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
+                        <div className="text-slate-500 text-[10px]">1 Ngày (Cả 2 ca)</div>
+                        <div className="font-black text-teal-800 text-sm">{tempMorningCap + tempAfternoonCap} tiết</div>
                       </div>
-                    );
-                  }
-                  return (
-                    <div className="mt-2 p-2 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-900 text-[11px] flex items-center gap-2">
-                      <span>✓</span>
-                      <span>Định mức này an toàn, toàn bộ {classes.length} lớp hiện tại đều đủ sức chứa!</span>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
+                        <div className="text-slate-500 text-[10px]">Tuần chỉ học Sáng (5b)</div>
+                        <div className="font-black text-teal-800 text-sm">{tempMorningCap * 5} tiết</div>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
+                        <div className="text-slate-500 text-[10px]">Sáng 5b + Chiều 2b</div>
+                        <div className="font-black text-teal-800 text-sm">{tempMorningCap * 5 + tempAfternoonCap * 2} tiết</div>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
+                        <div className="text-slate-500 text-[10px]">Cả tuần (5 Sáng + 5 Chiều)</div>
+                        <div className="font-black text-teal-800 text-sm">{(tempMorningCap + tempAfternoonCap) * 5} tiết</div>
+                      </div>
                     </div>
-                  );
-                })()}
-              </div>
+
+                    {/* Kiểm tra cảnh báo lớp bị thiếu tiết nếu áp dụng định mức này */}
+                    {(() => {
+                      const simulatedOverloadedWithNewCap = classes.filter(cls => {
+                        const conf = classShiftMap.get(cls) || { morningDays: [0, 1, 2, 3, 4], afternoonDays: [] };
+                        const cap = conf.morningDays.length * tempMorningCap + conf.afternoonDays.length * tempAfternoonCap;
+                        const assigned = classSessionsMap.get(cls) || 0;
+                        return assigned > cap;
+                      });
+
+                      if (simulatedOverloadedWithNewCap.length > 0) {
+                        return (
+                          <div className="mt-2 p-2 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-[11px] flex items-center gap-2">
+                            <span>⚠️</span>
+                            <span>
+                              <strong>Lưu ý:</strong> Nếu áp dụng đồng bộ, sẽ có <strong>{simulatedOverloadedWithNewCap.length} lớp</strong> ({simulatedOverloadedWithNewCap.slice(0, 3).join(', ')}{simulatedOverloadedWithNewCap.length > 3 ? '...' : ''}) bị thiếu tiết nếu không bật thêm ca học.
+                            </span>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="mt-2 p-2 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-900 text-[11px] flex items-center gap-2">
+                          <span>✓</span>
+                          <span>Định mức Toàn trường này an toàn, toàn bộ {classes.length} lớp hiện tại đều đủ sức chứa!</span>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Hướng dẫn Tab Định Mức Từng Khối Lớp */}
+                  <div className="p-3 bg-blue-50 rounded-xl border border-blue-200 text-blue-950 text-xs flex items-start gap-2.5">
+                    <span className="text-base mt-0.5">🎯</span>
+                    <div className="space-y-1">
+                      <p className="font-bold">Tùy biến định mức riêng cho từng Khối lớp:</p>
+                      <p className="text-blue-800 leading-relaxed">
+                        Thầy/Cô có thể cấu hình số tiết Sáng và Chiều riêng cho từng Khối (ví dụ: Khối 6, 7 chỉ học 4 tiết Sáng; Khối 8, 9 học 5 tiết Sáng).
+                        Khối nào để "Theo Toàn trường" sẽ tự động kế thừa định mức Sáng {tempMorningCap}t, Chiều {tempAfternoonCap}t.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Các nút áp dụng nhanh mẫu định mức theo khối */}
+                  <div className="flex items-center justify-between gap-2 flex-wrap bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs">
+                    <span className="font-bold text-slate-700">Mẫu định mức nhanh:</span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const preset: Record<string, { morningCap: number; afternoonCap: number }> = {};
+                          availableGrades.forEach(gr => {
+                            if (['6', '7'].includes(gr)) {
+                              preset[gr] = { morningCap: 4, afternoonCap: 2 };
+                            } else if (['8', '9'].includes(gr)) {
+                              preset[gr] = { morningCap: 5, afternoonCap: 3 };
+                            }
+                          });
+                          setTempGradePeriodCaps(preset);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 font-bold transition-colors cursor-pointer shadow-2xs"
+                        title="Khối 6,7 (Sáng 4t, Chiều 2t) | Khối 8,9 (Sáng 5t, Chiều 3t)"
+                      >
+                        ⚡ THCS: K6,7 (4s/2c) | K8,9 (5s/3c)
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const preset: Record<string, { morningCap: number; afternoonCap: number }> = {};
+                          availableGrades.forEach(gr => {
+                            preset[gr] = { morningCap: 4, afternoonCap: 3 };
+                          });
+                          setTempGradePeriodCaps(preset);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 font-bold transition-colors cursor-pointer shadow-2xs"
+                        title="Tất cả các khối Sáng 4t, Chiều 3t"
+                      >
+                        🌅 Tất cả Sáng 4t, Chiều 3t
+                      </button>
+
+                      {Object.keys(tempGradePeriodCaps).length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setTempGradePeriodCaps({})}
+                          className="px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 border border-amber-300 text-amber-900 font-bold transition-colors cursor-pointer shadow-2xs"
+                          title="Hủy toàn bộ tùy biến riêng để mọi khối tuân theo Toàn trường"
+                        >
+                          🔄 Đưa tất cả về Toàn trường
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Danh sách các khối lớp */}
+                  <div className="space-y-3">
+                    {availableGrades.map(gr => {
+                      const hasCustom = tempGradePeriodCaps[gr] !== undefined;
+                      const effM = hasCustom ? tempGradePeriodCaps[gr].morningCap : tempMorningCap;
+                      const effA = hasCustom ? tempGradePeriodCaps[gr].afternoonCap : tempAfternoonCap;
+                      const gradeClasses = classes.filter(c => {
+                        const m = c.match(/^(\d+)/);
+                        return m ? m[1] === gr : false;
+                      });
+                      const totalAssignedGrade = gradeClasses.reduce((s, c) => s + (classSessionsMap.get(c) || 0), 0);
+
+                      return (
+                        <div 
+                          key={gr}
+                          className={`p-3.5 rounded-xl border transition-all ${
+                            hasCustom 
+                              ? 'border-amber-300 bg-amber-50/40 shadow-xs' 
+                              : 'border-slate-200 bg-white hover:border-slate-300'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between flex-wrap gap-2 mb-2.5">
+                            <div className="flex items-center gap-2.5">
+                              <span className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs shadow-2xs ${
+                                hasCustom ? 'bg-amber-600 text-white' : 'bg-slate-700 text-white'
+                              }`}>
+                                K{gr}
+                              </span>
+                              <div>
+                                <div className="font-extrabold text-sm text-slate-900 flex items-center gap-1.5">
+                                  <span>Khối {gr}</span>
+                                  <span className="text-[11px] font-normal text-slate-500">
+                                    ({gradeClasses.length} lớp: {gradeClasses.slice(0, 5).join(', ')}{gradeClasses.length > 5 ? '...' : ''})
+                                  </span>
+                                </div>
+                                <div className="text-[10px] text-slate-500">
+                                  Tổng phân công: <strong>{totalAssignedGrade}t</strong> • TB <strong>{gradeClasses.length > 0 ? (totalAssignedGrade / gradeClasses.length).toFixed(1) : 0}t/lớp</strong>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              {hasCustom ? (
+                                <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
+                                  <span>⚡ Tùy biến:</span>
+                                  <span>Sáng {effM}t, Chiều {effA}t</span>
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                                  Theo Toàn trường ({tempMorningCap}s/{tempAfternoonCap}c)
+                                </span>
+                              )}
+
+                              {hasCustom && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const next = { ...tempGradePeriodCaps };
+                                    delete next[gr];
+                                    setTempGradePeriodCaps(next);
+                                  }}
+                                  className="text-[10px] font-bold text-slate-500 hover:text-red-600 hover:underline cursor-pointer"
+                                  title="Hủy tùy biến riêng để khối này dùng theo định mức Toàn trường"
+                                >
+                                  Đặt lại
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Bộ chọn Sáng & Chiều cho Khối */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2 border-t border-slate-200/70">
+                            {/* Ca Sáng */}
+                            <div className="bg-slate-50 p-2 rounded-lg border border-slate-200/80">
+                              <div className="flex items-center justify-between text-[11px] font-bold text-slate-700 mb-1.5">
+                                <span>🌅 Ca Sáng:</span>
+                                <span className="text-teal-700 font-extrabold">{effM} tiết/buổi</span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setTempGradePeriodCaps(prev => ({
+                                    ...prev,
+                                    [gr]: { morningCap: 5, afternoonCap: effA }
+                                  }))}
+                                  className={`py-1.5 px-2 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                                    effM === 5
+                                      ? 'bg-teal-600 text-white shadow-xs'
+                                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  5 tiết (Tiết 1-5)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setTempGradePeriodCaps(prev => ({
+                                    ...prev,
+                                    [gr]: { morningCap: 4, afternoonCap: effA }
+                                  }))}
+                                  className={`py-1.5 px-2 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                                    effM === 4
+                                      ? 'bg-teal-600 text-white shadow-xs'
+                                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  4 tiết (Tiết 1-4)
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Ca Chiều */}
+                            <div className="bg-slate-50 p-2 rounded-lg border border-slate-200/80">
+                              <div className="flex items-center justify-between text-[11px] font-bold text-slate-700 mb-1.5">
+                                <span>🌇 Ca Chiều:</span>
+                                <span className="text-amber-800 font-extrabold">{effA} tiết/buổi</span>
+                              </div>
+                              <div className="grid grid-cols-3 gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setTempGradePeriodCaps(prev => ({
+                                    ...prev,
+                                    [gr]: { morningCap: effM, afternoonCap: 3 }
+                                  }))}
+                                  className={`py-1.5 px-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                                    effA === 3
+                                      ? 'bg-amber-600 text-white shadow-xs'
+                                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  3 tiết
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setTempGradePeriodCaps(prev => ({
+                                    ...prev,
+                                    [gr]: { morningCap: effM, afternoonCap: 2 }
+                                  }))}
+                                  className={`py-1.5 px-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                                    effA === 2
+                                      ? 'bg-amber-600 text-white shadow-xs'
+                                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  2 tiết
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setTempGradePeriodCaps(prev => ({
+                                    ...prev,
+                                    [gr]: { morningCap: effM, afternoonCap: 4 }
+                                  }))}
+                                  className={`py-1.5 px-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                                    effA === 4
+                                      ? 'bg-amber-600 text-white shadow-xs'
+                                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  4 tiết
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Footer Modal */}
-            <div className="p-4 sm:p-5 border-t border-gray-200 bg-gray-50 flex items-center justify-between gap-3">
+            <div className="p-4 sm:p-5 border-t border-gray-200 bg-gray-50 flex items-center justify-between gap-3 shrink-0">
               <button
                 type="button"
                 onClick={handleResetPeriodCaps}
                 className="px-3 py-2 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-100 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
-                title="Khôi phục về Sáng 5 tiết, Chiều 3 tiết"
+                title="Khôi phục toàn bộ về chuẩn mặc định (Toàn trường Sáng 5t, Chiều 3t và không có khối riêng)"
               >
                 <span>🔄</span>
-                <span>Mặc định (5t / 3t)</span>
+                <span>Khôi phục mặc định (5t / 3t)</span>
               </button>
 
               <div className="flex items-center gap-2">
