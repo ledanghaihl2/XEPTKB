@@ -15,6 +15,7 @@ interface Props {
   data?: InputRow[];
   allowCrossDaySwapping?: boolean;
   onToggleCrossDaySwapping?: (val?: boolean) => void;
+  onRegenerateSchedule?: () => void;
 }
 
 const ConstraintsEditor: React.FC<Props> = ({ 
@@ -27,18 +28,22 @@ const ConstraintsEditor: React.FC<Props> = ({
   subjects,
   data = [],
   allowCrossDaySwapping,
-  onToggleCrossDaySwapping
+  onToggleCrossDaySwapping,
+  onRegenerateSchedule
 }) => {
   const [activeView, setActiveView] = useState<'matrix' | 'form_list'>('matrix');
   const [type, setType] = useState<ConstraintType>('CLASS_SHIFT');
   const [selectedTeacher, setSelectedTeacher] = useState(teachers[0] || '');
   const [selectedClass, setSelectedClass] = useState('ALL');
   const [selectedSubject, setSelectedSubject] = useState(subjects[0] || 'HĐTN');
+  const [selectedFixedTeacher, setSelectedFixedTeacher] = useState('');
+  const [isManualFixedTeacher, setIsManualFixedTeacher] = useState(false);
   const [selectedDay, setSelectedDay] = useState(0);
   const [selectedPeriod, setSelectedPeriod] = useState(0);
   const [busyScope, setBusyScope] = useState<'PERIOD' | 'MORNING' | 'AFTERNOON'>('PERIOD');
   const [isManualTeacher, setIsManualTeacher] = useState(false);
   const [isManualSubject, setIsManualSubject] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
 
   // Cấu hình thứ học theo từng ca trong tuần: 0=Thứ 2, 1=Thứ 3, ..., 4=Thứ 6
   const [morningDays, setMorningDays] = useState<number[]>([0, 1, 2, 3, 4]);
@@ -407,13 +412,35 @@ const ConstraintsEditor: React.FC<Props> = ({
 
     if (type === 'FIXED_SESSION') {
       const subj = selectedSubject.trim();
-      onAdd({
+      const teacherVal = selectedFixedTeacher.trim() || undefined;
+
+      const newConstraint: Omit<Constraint, 'id'> = {
         type: 'FIXED_SESSION',
         className: selectedClass,
         subject: subj,
+        teacher: teacherVal,
         day: selectedDay,
         period: selectedPeriod,
-      });
+      };
+
+      if (onUpdateConstraints) {
+        onUpdateConstraints(prev => {
+          // Lọc bỏ ràng buộc trùng nếu cùng lớp (hoặc cùng khối/toàn trường) tại cùng ngày và tiết
+          const filtered = prev.filter(c => !(c.type === 'FIXED_SESSION' && c.className === selectedClass && c.day === selectedDay && c.period === selectedPeriod));
+          return [...filtered, { ...newConstraint, id: 'fix_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4) }];
+        });
+      } else {
+        onAdd(newConstraint);
+      }
+
+      const scopeName = selectedClass === 'ALL' 
+        ? `Toàn trường (${classes.length} lớp)` 
+        : selectedClass.startsWith('KHOI_') 
+        ? `Toàn bộ ${selectedClass.replace('KHOI_', 'Khối ')}` 
+        : `Lớp ${selectedClass}`;
+      const teacherInfo = teacherVal ? ` (GV: ${teacherVal})` : '';
+      setSuccessMessage(`✅ Đã thêm tiết cố định môn "${subj}"${teacherInfo} cho ${scopeName} vào ${DAYS[selectedDay]}, ${PERIODS[selectedPeriod]}!`);
+      setTimeout(() => setSuccessMessage(''), 7000);
       return;
     }
   };
@@ -752,6 +779,49 @@ const ConstraintsEditor: React.FC<Props> = ({
             </div>
           )}
 
+          {/* Chọn Giáo viên cho FIXED_SESSION (Tùy chọn) */}
+          {type === 'FIXED_SESSION' && (
+            <div>
+              <div className="flex justify-between items-center mb-1.5">
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide">
+                  Giáo viên <span className="font-normal text-gray-400 lowercase">(tùy chọn)</span>
+                </label>
+                <button 
+                  type="button"
+                  onClick={() => setIsManualFixedTeacher(!isManualFixedTeacher)}
+                  className="text-xs text-primary hover:text-teal-800 underline focus:outline-none"
+                >
+                  {isManualFixedTeacher ? 'Chọn danh sách' : 'Nhập tay'}
+                </button>
+              </div>
+              {isManualFixedTeacher ? (
+                <input
+                  type="text"
+                  value={selectedFixedTeacher}
+                  onChange={e => setSelectedFixedTeacher(e.target.value)}
+                  placeholder="Ví dụ: GVCN, TPT, hoặc tên giáo viên..."
+                  className="w-full p-2.5 border border-gray-300 rounded-lg shadow-sm focus:border-primary focus:ring-1 focus:ring-primary text-sm bg-white font-medium"
+                />
+              ) : (
+                <select 
+                  value={selectedFixedTeacher}
+                  onChange={e => setSelectedFixedTeacher(e.target.value)}
+                  className="w-full p-2.5 border border-gray-300 rounded-lg shadow-sm font-medium text-sm bg-white"
+                >
+                  <option value="">-- Tự động theo phân công / GVCN --</option>
+                  <optgroup label="🌟 Vai trò phụ trách chung">
+                    <option value="GVCN">Giáo viên chủ nhiệm (GVCN)</option>
+                    <option value="TPT">Tổng phụ trách (TPT)</option>
+                    <option value="BGH">Ban giám hiệu (BGH)</option>
+                  </optgroup>
+                  <optgroup label="👨‍🏫 Danh sách giáo viên">
+                    {teachers.map(t => <option key={t} value={t}>{t}</option>)}
+                  </optgroup>
+                </select>
+              )}
+            </div>
+          )}
+
           {/* Chọn Thứ & Tiết (cho FIXED_SESSION) */}
           {type === 'FIXED_SESSION' && (
             <>
@@ -1057,14 +1127,52 @@ const ConstraintsEditor: React.FC<Props> = ({
 
         </div>
         
-        {/* Nút bấm Thêm ràng buộc */}
-        <button 
-          onClick={handleAdd}
-          className="bg-primary hover:bg-teal-800 text-white px-5 py-2.5 rounded-lg transition-colors flex items-center gap-2 shadow font-bold text-sm"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Thêm ràng buộc
-        </button>
+        {/* Banner thông báo thêm ràng buộc thành công */}
+        {successMessage && (
+          <div className="mb-4 p-3.5 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-900 text-xs font-semibold flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 animate-fadeIn">
+            <div className="flex items-center gap-2">
+              <span className="text-base">🎉</span>
+              <span>{successMessage}</span>
+            </div>
+            {onRegenerateSchedule && (
+              <button
+                type="button"
+                onClick={onRegenerateSchedule}
+                className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-bold text-xs shadow-xs transition-all active:scale-95 flex items-center gap-1 self-start sm:self-auto cursor-pointer"
+              >
+                <span>⚡</span>
+                <span>Xếp lại TKB ngay</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Các nút bấm Thao tác */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <button 
+            type="button"
+            onClick={handleAdd}
+            className="bg-primary hover:bg-teal-800 text-white px-5 py-2.5 rounded-lg transition-colors flex items-center gap-2 shadow font-bold text-sm cursor-pointer"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Thêm ràng buộc
+          </button>
+
+          {onRegenerateSchedule && (
+            <button 
+              type="button"
+              onClick={() => {
+                handleAdd();
+                setTimeout(() => onRegenerateSchedule(), 80);
+              }}
+              className="bg-emerald-700 hover:bg-emerald-800 text-white px-5 py-2.5 rounded-lg transition-all flex items-center gap-2 shadow font-bold text-sm cursor-pointer active:scale-95"
+              title="Thêm ràng buộc và tự động xếp lại thời khóa biểu ngay lập tức"
+            >
+              <span>⚡</span>
+              <span>Thêm & Xếp lại TKB ngay</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Danh sách ràng buộc đã thiết lập */}

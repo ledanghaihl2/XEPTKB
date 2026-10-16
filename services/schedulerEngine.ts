@@ -91,6 +91,15 @@ export function evaluateScheduleQuality(grid: TimetableGrid, allTeachers: string
 }
 
 /**
+ * Kiểm tra xem tên giáo viên có phải là vai trò quản lý / phụ trách chung không tính trùng lịch hay không
+ * (Ví dụ: BGH, TPT, GVCN, Toàn trường, GV Phụ trách, Chưa phân công)
+ */
+export function isGeneralTeacherRole(teacherName?: string | null): boolean {
+  if (!teacherName) return false;
+  return /^(bgh|ban giám hiệu|tpt|tổng phụ trách|toàn trường|gvcn|gv phụ trách|chưa phân công)$/i.test(teacherName.trim());
+}
+
+/**
  * Đếm số lượng xung đột trùng tiết giáo viên trên toàn bộ ma trận thời khóa biểu.
  * (Ràng buộc cứng Hard Constraint số 1: Một giáo viên không thể dạy 2 lớp ở cùng 1 tiết)
  */
@@ -113,8 +122,7 @@ export function countGlobalTeacherCollisions(
         const session = grid[cls]?.[d]?.[p];
         if (session && session.teacher && session.teacher !== 'Chưa phân công') {
           const t = session.teacher.trim();
-          const isGeneral = /^(bgh|ban giám hiệu|tpt|tổng phụ trách|toàn trường)$/i.test(t);
-          if (isGeneral) continue; // Chức danh chung toàn trường (BGH, TPT) không tính là trùng tiết
+          if (isGeneralTeacherRole(t)) continue; // Chức danh chung (BGH, TPT, GVCN) không tính là trùng tiết
           if (!teacherMap.has(t)) {
             teacherMap.set(t, []);
           }
@@ -364,6 +372,7 @@ function isTeacherBusyAt(
   excludeClass: string | null = null,
   targetClasses?: string[]
 ): boolean {
+  if (isGeneralTeacherRole(teacher)) return false;
   if (teacherBusySet.has(`${teacher}_${d}_${p}`)) return true;
   const classesToScan = targetClasses && targetClasses.length > 0
     ? targetClasses
@@ -2356,13 +2365,21 @@ function generateInitialGrid(data: InputRow[], constraints: Constraint[] = [], a
           }
 
           let assignedTeacher = '';
-          if (need && need.remaining > 0) {
+          if (c.teacher && c.teacher.trim()) {
+            assignedTeacher = c.teacher.trim();
+            if (need && need.remaining > 0) {
+              need.remaining--;
+            }
+          } else if (need && need.remaining > 0) {
             need.remaining--;
             assignedTeacher = need.teacher;
           } else {
-            // Nếu lớp chưa có phân công trong data, tìm giáo viên của lớp hoặc gán GVCN/BGH
-            const anyTeacherOfClass = data.find(r => r.className === cls && r.teacher)?.teacher;
-            assignedTeacher = anyTeacherOfClass ? anyTeacherOfClass : 'GV Phụ trách';
+            // Nếu môn không có trong phân công (ví dụ HĐTN, Chào cờ, Sinh hoạt lớp), gán GVCN/BGH
+            if (isSubjectMatching(c.subject, 'HĐTN') || isSubjectMatching(c.subject, 'Chào cờ') || isSubjectMatching(c.subject, 'Sinh hoạt')) {
+              assignedTeacher = 'GVCN';
+            } else {
+              assignedTeacher = 'GV Phụ trách';
+            }
           }
 
           grid[cls][c.day!][targetP] = {
@@ -2372,7 +2389,7 @@ function generateInitialGrid(data: InputRow[], constraints: Constraint[] = [], a
             teacher: assignedTeacher
           };
 
-          const isGeneral = /^(bgh|ban giám hiệu|tpt|tổng phụ trách|toàn trường|gvcn)$/i.test(assignedTeacher.trim());
+          const isGeneral = isGeneralTeacherRole(assignedTeacher);
           if (assignedTeacher && !isGeneral) {
             teacherBusy[c.day!][targetP].add(assignedTeacher);
           }
@@ -2774,6 +2791,7 @@ export function desynchronizeTeacherCollisions(
         const session = grid[cls]?.[d]?.[p];
         if (session && session.teacher && session.teacher !== 'Chưa phân công') {
           const t = session.teacher.trim();
+          if (isGeneralTeacherRole(t)) continue; // Bỏ qua vai trò chung (GVCN, BGH, TPT) không tính trùng
           if (!teacherMap.has(t)) teacherMap.set(t, []);
           teacherMap.get(t)!.push(cls);
         }
@@ -2794,6 +2812,7 @@ export function desynchronizeTeacherCollisions(
         // Các lớp còn lại bị trùng: cần tìm slot khác để dời hoặc hoán đổi
         for (const duplicateClass of classList) {
           if (duplicateClass === primaryClass) continue;
+          if (fixedSlots.has(`${duplicateClass}_${d}_${p}`)) continue; // 🛡️ BẢO VỆ TIẾT CỐ ĐỊNH: Tuyệt đối không gỡ hay di dời tiết cố định!
 
           const dupSession = grid[duplicateClass][d][p];
           if (!dupSession) continue;

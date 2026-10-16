@@ -1025,6 +1025,7 @@ function App() {
               data={data}
               allowCrossDaySwapping={allowCrossDaySwapping}
               onToggleCrossDaySwapping={handleToggleCrossDaySwapping}
+              onRegenerateSchedule={() => handleGenerate(data)}
             />
           )}
         </div>
