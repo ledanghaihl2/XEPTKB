@@ -86,8 +86,27 @@ export const getActiveShiftConstraints = (customConstraints?: Constraint[]): {
 };
 
 /**
+ * Tính toán tổng sức chứa (số tiết có thể xếp) cho một ca học.
+ * QUY TẮC: Nếu một ngày học cả sáng và chiều thì buổi sáng chỉ có 4 tiết.
+ */
+export const calcShiftCapacity = (
+  morningDays: number[],
+  afternoonDays: number[],
+  morningCap: number = 5,
+  afternoonCap: number = 3
+): number => {
+  let morningCapacity = 0;
+  morningDays.forEach(d => {
+    const hasAfternoon = afternoonDays.includes(d);
+    morningCapacity += hasAfternoon ? Math.min(morningCap, 4) : morningCap;
+  });
+  return morningCapacity + (afternoonDays.length * afternoonCap);
+};
+
+/**
  * Kiểm tra xem một ô (ngày, tiết) có hợp lệ với lịch hoạt động của trường hay không.
  * Tự động đồng bộ theo ma trận ca học Thầy/Cô đã tích chọn (Sáng/Chiều từng thứ).
+ * QUY TẮC: Nếu ngày đó có ca chiều thì buổi sáng chỉ có tối đa 4 tiết (Tiết Sáng 5 nghỉ).
  */
 export const isValidSlot = (dayIdx: number, periodIdx: number, customConstraints?: Constraint[]): boolean => {
   if (dayIdx < 0 || dayIdx >= 5 || periodIdx < 0 || periodIdx >= 8) return false;
@@ -97,7 +116,13 @@ export const isValidSlot = (dayIdx: number, periodIdx: number, customConstraints
     const isMorning = periodIdx < 5;
     if (isMorning) {
       if (!activeShift.morningDays.includes(dayIdx)) return false;
-      if (periodIdx >= activeShift.morningPeriodCap) return false;
+      // QUY TẮC: Nếu ngày dayIdx học cả sáng và chiều thì buổi sáng chỉ có tối đa 4 tiết (periodIdx < 4)
+      const hasAfternoon = activeShift.afternoonDays.includes(dayIdx);
+      const effectiveCap = hasAfternoon 
+        ? Math.min(activeShift.morningPeriodCap ?? 4, 4) 
+        : (activeShift.morningPeriodCap ?? 5);
+
+      if (periodIdx >= effectiveCap) return false;
       return true;
     } else {
       if (!activeShift.afternoonDays.includes(dayIdx)) return false;
@@ -112,6 +137,7 @@ export const isValidSlot = (dayIdx: number, periodIdx: number, customConstraints
 
 /**
  * Kiểm tra xem một ô (ngày, tiết) có hợp lệ riêng với một lớp cụ thể hay không.
+ * QUY TẮC: Nếu ngày đó lớp học cả sáng và chiều thì buổi sáng chỉ có tối đa 4 tiết (Tiết Sáng 5 nghỉ).
  */
 export const isSlotValidForClass = (
   className: string,
@@ -139,7 +165,14 @@ export const isSlotValidForClass = (
       const isMorning = periodIdx < 5;
       if (isMorning) {
         if (!classRule.morningDays?.includes(dayIdx)) return false;
-        if (periodIdx >= (classRule.morningPeriodCap ?? 5)) return false;
+
+        // QUY TẮC: Nếu ngày dayIdx lớp học cả sáng và chiều thì buổi sáng chỉ có tối đa 4 tiết (periodIdx < 4)
+        const hasAfternoon = classRule.afternoonDays?.includes(dayIdx);
+        const effectiveCap = hasAfternoon 
+          ? Math.min(classRule.morningPeriodCap ?? 4, 4) 
+          : (classRule.morningPeriodCap ?? 5);
+
+        if (periodIdx >= effectiveCap) return false;
         return true;
       } else {
         if (!classRule.afternoonDays?.includes(dayIdx)) return false;

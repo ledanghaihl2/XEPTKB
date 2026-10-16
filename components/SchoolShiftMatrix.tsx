@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Constraint, InputRow } from '../types';
-import { DAYS, STORAGE_KEY_ALLOW_CROSS_DAY_SWAP } from '../constants';
+import { DAYS, STORAGE_KEY_ALLOW_CROSS_DAY_SWAP, calcShiftCapacity } from '../constants';
 
 const STORAGE_KEY_SHIFT_CAPS = 'tkb_shift_period_caps';
 
@@ -421,7 +421,7 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
     targetClasses.forEach(cls => {
       const conf = classShiftMap.get(cls) || { morningDays: [0, 1, 2, 3, 4], afternoonDays: [0, 1, 2, 3, 4] };
       const caps = getClassPeriodCaps(cls);
-      const cap = conf.morningDays.length * caps.morningCap + conf.afternoonDays.length * caps.afternoonCap;
+      const cap = calcShiftCapacity(conf.morningDays, conf.afternoonDays, caps.morningCap, caps.afternoonCap);
       const assigned = classSessionsMap.get(cls) || 0;
 
       totalAssigned += assigned;
@@ -480,9 +480,9 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
       let newM = [...conf.morningDays];
       let newA = [...conf.afternoonDays];
 
-      // 1. Ưu tiên bật các buổi sáng chưa học (mỗi buổi sáng +caps.morningCap tiết)
+      // 1. Ưu tiên bật các buổi sáng chưa học
       for (let d = 0; d < 5; d++) {
-        const curCap = newM.length * caps.morningCap + newA.length * caps.afternoonCap;
+        const curCap = calcShiftCapacity(newM, newA, caps.morningCap, caps.afternoonCap);
         if (curCap >= item.assigned) break;
         if (!newM.includes(d)) {
           newM.push(d);
@@ -493,7 +493,7 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
       // 2. Bổ sung các buổi chiều theo thứ tự sư phạm tối ưu: T3 (1), T5 (3), T2 (0), T4 (2), T6 (4)
       const afternoonPriority = [1, 3, 0, 2, 4];
       for (const d of afternoonPriority) {
-        const curCap = newM.length * caps.morningCap + newA.length * caps.afternoonCap;
+        const curCap = calcShiftCapacity(newM, newA, caps.morningCap, caps.afternoonCap);
         if (curCap >= item.assigned) break;
         if (!newA.includes(d)) {
           newA.push(d);
@@ -648,7 +648,7 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
   }, [classes, constraints]);
 
   // Mô phỏng trước sức chứa trong Modal để cảnh báo sớm (Pre-Apply Simulation)
-  const modalCapacity = modalMorningDays.length * shiftPeriodCaps.morningCap + modalAfternoonDays.length * shiftPeriodCaps.afternoonCap;
+  const modalCapacity = calcShiftCapacity(modalMorningDays, modalAfternoonDays, shiftPeriodCaps.morningCap, shiftPeriodCaps.afternoonCap);
   const modalSimulatedOverloaded = useMemo(() => {
     if (!isSchoolModalOpen) return [];
     const list: { className: string; assigned: number; missing: number }[] = [];
@@ -658,13 +658,13 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
       if (!resetOverrides && isOverride) {
         const conf = classShiftMap.get(cls);
         if (conf) {
-          const cCap = conf.morningDays.length * caps.morningCap + conf.afternoonDays.length * caps.afternoonCap;
+          const cCap = calcShiftCapacity(conf.morningDays, conf.afternoonDays, caps.morningCap, caps.afternoonCap);
           const assigned = classSessionsMap.get(cls) || 0;
           if (assigned > cCap) list.push({ className: cls, assigned, missing: assigned - cCap });
         }
       } else {
         const assigned = classSessionsMap.get(cls) || 0;
-        const modalCapForClass = modalMorningDays.length * caps.morningCap + modalAfternoonDays.length * caps.afternoonCap;
+        const modalCapForClass = calcShiftCapacity(modalMorningDays, modalAfternoonDays, caps.morningCap, caps.afternoonCap);
         if (assigned > modalCapForClass) {
           list.push({ className: cls, assigned, missing: assigned - modalCapForClass });
         }
@@ -1365,7 +1365,7 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
                         {/* Sức chứa và Nút Áp dụng */}
                         {(() => {
                           const currentGrCaps = gr === 'ALL' ? shiftPeriodCaps : getGradePeriodCaps(gr);
-                          const projectedBatchCap = batchMorningDays.length * currentGrCaps.morningCap + batchAfternoonDays.length * currentGrCaps.afternoonCap;
+                          const projectedBatchCap = calcShiftCapacity(batchMorningDays, batchAfternoonDays, currentGrCaps.morningCap, currentGrCaps.afternoonCap);
                           const targetGradeClasses = getTargetClassesForGrade(gr);
                           const simulatedBatchOverloaded = targetGradeClasses.filter(c => {
                             const ass = classSessionsMap.get(c) || 0;
@@ -1894,7 +1894,7 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
 
                 const caps = getClassPeriodCaps(cls);
                 const assignedSessions = classSessionsMap.get(cls) || 0;
-                const capacity = (morningDays.length * caps.morningCap) + (afternoonDays.length * caps.afternoonCap);
+                const capacity = calcShiftCapacity(morningDays, afternoonDays, caps.morningCap, caps.afternoonCap);
                 const isOverloaded = assignedSessions > capacity;
                 const isTight = capacity - assignedSessions <= 2 && !isOverloaded;
 
@@ -1968,7 +1968,7 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
 
                       {/* Phân rã số buổi sáng / chiều */}
                       <div className="flex items-center justify-between text-[9px] text-gray-500 font-medium mt-1">
-                        <span>🌅 {morningDays.length} sáng ({morningDays.length * caps.morningCap}t)</span>
+                        <span title="Số tiết sáng (Các ngày học cả chiều chỉ có 4 tiết sáng)">🌅 {morningDays.length} sáng ({calcShiftCapacity(morningDays, afternoonDays, caps.morningCap, 0)}t)</span>
                         <span>🌇 {afternoonDays.length} chiều ({afternoonDays.length * caps.afternoonCap}t)</span>
                       </div>
                     </td>
@@ -1989,7 +1989,7 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
                                 : 'bg-white hover:bg-slate-100/70'
                             }`}
                             style={{ backgroundColor: isMorningActive ? '#f0fdfa' : undefined }}
-                            title={`Click để ${isMorningActive ? 'Tắt' : 'Bật'} ca Sáng ${DAYS[dayIdx]} cho lớp ${cls}`}
+                            title={`Click để ${isMorningActive ? 'Tắt' : 'Bật'} ca Sáng ${DAYS[dayIdx]} cho lớp ${cls} (${isAfternoonActive ? '4 tiết do học cả chiều' : `${caps.morningCap} tiết`})`}
                           >
                             <button
                               type="button"

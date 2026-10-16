@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { TimetableGrid, ClassSession, ShiftType, Constraint } from '../types';
-import { DAYS, PERIODS, CLASSES, isValidSlot, SHIFT_OPTIONS, isPeriodInShift } from '../constants';
+import { DAYS, PERIODS, CLASSES, isValidSlot, isSlotValidForClass, SHIFT_OPTIONS, isPeriodInShift } from '../constants';
 
 interface Props {
   data: TimetableGrid;
@@ -140,6 +140,19 @@ const TimetableGridDisplay: React.FC<Props> = ({ data, onEditCell, shift, onShif
 
                         {displayClasses.map(cls => {
                           const session = data[cls]?.[dayIdx]?.[periodIdx];
+                          const isSlotValid = isSlotValidForClass(cls, dayIdx, periodIdx, constraints);
+                          if (!isSlotValid) {
+                            return (
+                              <div
+                                key={cls}
+                                className="p-2 text-xs flex flex-col justify-center min-h-[50px] text-center bg-gray-100/80 border-b-transparent text-gray-400 select-none"
+                                title={`Lớp ${cls} nghỉ (không học tiết này do lịch học sáng chỉ 4 tiết khi có ca chiều)`}
+                              >
+                                <span className="text-[11px] font-medium text-gray-400">Nghỉ</span>
+                              </div>
+                            );
+                          }
+
                           return (
                             <div 
                               key={cls} 

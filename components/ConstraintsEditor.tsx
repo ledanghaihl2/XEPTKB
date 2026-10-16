@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Constraint, ConstraintType, ShiftType, InputRow } from '../types';
-import { DAYS, PERIODS } from '../constants';
+import { DAYS, PERIODS, calcShiftCapacity } from '../constants';
 import SchoolShiftMatrix from './SchoolShiftMatrix';
 
 interface Props {
@@ -217,8 +217,8 @@ const ConstraintsEditor: React.FC<Props> = ({
   const morningCap = schoolWideConstraint?.morningPeriodCap || 5;
   const afternoonCap = schoolWideConstraint?.afternoonPeriodCap || 3;
 
-  // Tính tổng số tiết tối đa có thể xếp theo cấu hình ca/thứ này
-  const currentCapacity = (morningDays.length * morningCap) + (afternoonDays.length * afternoonCap);
+  // Tính tổng số tiết tối đa có thể xếp theo cấu hình ca/thứ này (áp dụng quy tắc sáng 4 tiết khi học cả chiều)
+  const currentCapacity = calcShiftCapacity(morningDays, afternoonDays, morningCap, afternoonCap);
 
   // Số tiết mà lớp đang chọn cần trong phân công
   const selectedClassNeededSessions = useMemo(() => {

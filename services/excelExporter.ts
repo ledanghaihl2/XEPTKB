@@ -1,7 +1,7 @@
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { TimetableGrid, InputRow, ShiftType, Constraint } from '../types';
-import { CLASSES, DAYS, PERIODS, isValidSlot, isPeriodInShift } from '../constants';
+import { CLASSES, DAYS, PERIODS, isValidSlot, isSlotValidForClass, isPeriodInShift } from '../constants';
 import { validateOpenXmlArchive } from './openXmlValidator';
 
 // Declare XLSX globally as it is loaded via script tag
@@ -285,12 +285,12 @@ export const exportScheduleToExcel = async (
     const clsColLetter = XLSX.utils.encode_col(2 + targetClasses.indexOf(cls));
 
     PERIODS.forEach((period, pIdx) => {
-      const isRowValid = DAYS.some((_, dIdx) => isValidSlot(dIdx, pIdx, constraints));
+      const isRowValid = DAYS.some((_, dIdx) => isSlotValidForClass(cls, dIdx, pIdx, constraints));
       if (!isRowValid) return;
 
       const row: any[] = [period];
       DAYS.forEach((day, dIdx) => {
-        if (!isValidSlot(dIdx, pIdx, constraints)) {
+        if (!isSlotValidForClass(cls, dIdx, pIdx, constraints)) {
             row.push('--'); // BLOCKED SLOT
             return;
         }

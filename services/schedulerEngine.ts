@@ -384,7 +384,12 @@ export function isSlotAllowedForClass(
   if (rule.morningDays !== undefined || rule.afternoonDays !== undefined) {
     if (isMorning) {
       if (!rule.morningDays || !rule.morningDays.includes(d)) return false;
-      const morningCap = rule.morningPeriodCap ?? 5;
+      // QUY TẮC: Nếu ngày d có học cả sáng VÀ chiều thì buổi sáng chỉ có 4 tiết (p < 4, Tiết Sáng 5 nghỉ)
+      const hasAfternoon = rule.afternoonDays && rule.afternoonDays.includes(d);
+      const morningCap = hasAfternoon 
+        ? Math.min(rule.morningPeriodCap ?? 4, 4) 
+        : (rule.morningPeriodCap ?? 5);
+
       if (p >= morningCap) return false;
     } else {
       if (!rule.afternoonDays || !rule.afternoonDays.includes(d)) return false;
@@ -396,6 +401,9 @@ export function isSlotAllowedForClass(
 
   // Tương thích ngược với ràng buộc ca học kiểu cũ (shift toàn tuần)
   if (rule.shift) {
+    if (rule.shift === 'ALL' && isMorning && p >= 4) {
+      return false; // Ca cả ngày: sáng chỉ có 4 tiết
+    }
     return isPeriodInShift(p, rule.shift);
   }
 
