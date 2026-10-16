@@ -1,6 +1,6 @@
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
-import { TimetableGrid, InputRow, ShiftType } from '../types';
+import { TimetableGrid, InputRow, ShiftType, Constraint } from '../types';
 import { CLASSES, DAYS, PERIODS, isValidSlot, isPeriodInShift } from '../constants';
 import { validateOpenXmlArchive } from './openXmlValidator';
 
@@ -14,7 +14,8 @@ declare global {
 export const exportScheduleToExcel = async (
   schedule: TimetableGrid, 
   rawData: InputRow[], 
-  selectedShift: ShiftType = 'ALL'
+  selectedShift: ShiftType = 'ALL',
+  constraints?: Constraint[]
 ) => {
   try {
     if (!(window as any).XLSX) {
@@ -77,12 +78,12 @@ export const exportScheduleToExcel = async (
   DAYS.forEach((day, dIdx) => {
     slotRowMap[dIdx] = {};
     let dayPrinted = false;
-    let validPeriodsCount = PERIODS.filter((_, pIdx) => isValidSlot(dIdx, pIdx) && isPeriodInShift(pIdx, selectedShift)).length;
+    let validPeriodsCount = PERIODS.filter((_, pIdx) => isValidSlot(dIdx, pIdx, constraints) && isPeriodInShift(pIdx, selectedShift)).length;
     let periodsPrinted = 0;
 
     PERIODS.forEach((period, pIdx) => {
       if (!isPeriodInShift(pIdx, selectedShift)) return;
-      if (!isValidSlot(dIdx, pIdx)) return;
+      if (!isValidSlot(dIdx, pIdx, constraints)) return;
 
       const row: (string | number)[] = [!dayPrinted ? day : '', period];
       dayPrinted = true;
@@ -157,7 +158,7 @@ export const exportScheduleToExcel = async (
       if (!isPeriodInShift(pIdx, selectedShift)) return;
       const row: any[] = [period];
       DAYS.forEach((day, dIdx) => {
-        if (!isValidSlot(dIdx, pIdx)) {
+        if (!isValidSlot(dIdx, pIdx, constraints)) {
             row.push('--'); // BLOCKED SLOT
             return;
         }
@@ -277,12 +278,12 @@ export const exportScheduleToExcel = async (
     const clsColLetter = XLSX.utils.encode_col(2 + CLASSES.indexOf(cls));
 
     PERIODS.forEach((period, pIdx) => {
-      const isRowValid = DAYS.some((_, dIdx) => isValidSlot(dIdx, pIdx));
+      const isRowValid = DAYS.some((_, dIdx) => isValidSlot(dIdx, pIdx, constraints));
       if (!isRowValid) return;
 
       const row: any[] = [period];
       DAYS.forEach((day, dIdx) => {
-        if (!isValidSlot(dIdx, pIdx)) {
+        if (!isValidSlot(dIdx, pIdx, constraints)) {
             row.push('--'); // BLOCKED SLOT
             return;
         }

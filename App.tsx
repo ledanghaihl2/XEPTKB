@@ -351,7 +351,7 @@ function App() {
   };
 
   const handleExportExcel = () => {
-    exportScheduleToExcel(schedule, data, selectedShift);
+    exportScheduleToExcel(schedule, data, selectedShift, constraints);
   };
 
   const handleImportClick = () => {
@@ -838,6 +838,7 @@ function App() {
                 data={schedule} 
                 shift={selectedShift}
                 onShiftChange={setSelectedShift}
+                constraints={constraints}
                 onEditCell={(className, day, period, subject, teacher) => {
                   setSchedule(prev => {
                     const newSchedule = { ...prev };
@@ -867,6 +868,7 @@ function App() {
                 schedule={schedule} 
                 shift={selectedShift}
                 onShiftChange={setSelectedShift}
+                constraints={constraints}
               />
             </div>
           )}
@@ -877,6 +879,7 @@ function App() {
                 schedule={schedule} 
                 shift={selectedShift}
                 onShiftChange={setSelectedShift}
+                constraints={constraints}
                 onEditCell={(className, day, period, subject, teacher) => {
                   setSchedule(prev => {
                     const newSchedule = { ...prev };

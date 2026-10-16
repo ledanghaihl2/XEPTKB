@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TimetableGrid, ClassSession, ShiftType } from '../types';
+import { TimetableGrid, ClassSession, ShiftType, Constraint } from '../types';
 import { DAYS, PERIODS, CLASSES, isValidSlot, SHIFT_OPTIONS, isPeriodInShift } from '../constants';
 
 interface Props {
@@ -7,9 +7,10 @@ interface Props {
   onEditCell?: (className: string, day: number, period: number, subject: string, teacher: string) => void;
   shift?: ShiftType;
   onShiftChange?: (shift: ShiftType) => void;
+  constraints?: Constraint[];
 }
 
-const TimetableGridDisplay: React.FC<Props> = ({ data, onEditCell, shift, onShiftChange }) => {
+const TimetableGridDisplay: React.FC<Props> = ({ data, onEditCell, shift, onShiftChange, constraints }) => {
   const [internalShift, setInternalShift] = useState<ShiftType>('ALL');
   const currentShift = shift ?? internalShift;
 
@@ -89,7 +90,7 @@ const TimetableGridDisplay: React.FC<Props> = ({ data, onEditCell, shift, onShif
         {DAYS.map((day, dayIdx) => {
           // Lọc các tiết hợp lệ trong ngày thỏa mãn ca/buổi học đang chọn
           const validPeriodsInDay = PERIODS.map((_, p) => p).filter(
-            p => isValidSlot(dayIdx, p) && isPeriodInShift(p, currentShift)
+            p => isValidSlot(dayIdx, p, constraints) && isPeriodInShift(p, currentShift)
           );
           if (validPeriodsInDay.length === 0) return null;
 

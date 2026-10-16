@@ -138,7 +138,12 @@ export function countGlobalTeacherCollisions(
  * Hàm phạt đa mục tiêu (Multi-objective Penalty Function):
  * Điểm phạt càng thấp thì Thời khóa biểu càng đẹp và tối ưu sư phạm.
  */
-function calculatePenalty(grid: TimetableGrid, unplacedCount = 0, classes?: string[]): number {
+function calculatePenalty(
+  grid: TimetableGrid,
+  unplacedCount = 0,
+  classes?: string[],
+  classRuleMap?: Map<string, ClassShiftRule>
+): number {
   const targetClasses = classes && classes.length > 0
     ? classes
     : (Object.keys(grid).length > 0 ? Object.keys(grid) : CLASSES);
@@ -152,6 +157,8 @@ function calculatePenalty(grid: TimetableGrid, unplacedCount = 0, classes?: stri
 
   // 1. Kiểm tra phân bổ môn học từng lớp theo ngày
   targetClasses.forEach(cls => {
+    const classRule = classRuleMap?.get(cls);
+
     for (let d = 0; d < DAYS.length; d++) {
       const daySubjects: Record<string, number[]> = {};
 
@@ -206,6 +213,40 @@ function calculatePenalty(grid: TimetableGrid, unplacedCount = 0, classes?: stri
         if (spanA > aSlots.length) {
           penalty += (spanA - aSlots.length) * 5000; // Phạt cực nặng nếu lủng giữa ca chiều
         }
+      }
+
+      // 🛡️ NGUYÊN TẮC: TÍCH CHỌN Ở ĐÂU THÌ TKB BẮT BUỘC PHẢI XẾP VÀO ĐÓ
+      if (classRule) {
+        // Nếu ngày d nằm trong afternoonDays (Thầy/Cô tích chọn học chiều) mà chiều ngày d có 0 tiết:
+        if (classRule.afternoonDays && classRule.afternoonDays.includes(d)) {
+          if (aSlots.length === 0) {
+            penalty += 150000; // Phạt cực nặng vì bỏ hoang buổi chiều được cấu hình!
+          }
+        }
+        // Nếu ngày d nằm trong morningDays (Thầy/Cô tích chọn học sáng) mà sáng ngày d có 0 tiết:
+        if (classRule.morningDays && classRule.morningDays.includes(d)) {
+          if (mSlots.length === 0) {
+            penalty += 150000; // Phạt cực nặng vì bỏ hoang buổi sáng được cấu hình!
+          }
+        }
+      }
+    }
+
+    // Đánh giá cân bằng số tiết giữa các buổi chiều được tích chọn
+    if (classRule?.afternoonDays && classRule.afternoonDays.length > 1) {
+      const afternoonCounts = classRule.afternoonDays.map(dayIdx => {
+        let count = 0;
+        for (let p = 5; p < 8; p++) {
+          if (grid[cls]?.[dayIdx]?.[p]) count++;
+        }
+        return count;
+      });
+      const minAft = Math.min(...afternoonCounts);
+      const maxAft = Math.max(...afternoonCounts);
+      if (minAft === 0 && maxAft > 0) {
+        penalty += 200000; // Phạt cực nặng nếu có buổi chiều 0 tiết trong khi buổi khác có tiết
+      } else if (maxAft - minAft > 1) {
+        penalty += (maxAft - minAft) * 1000; // Ưu tiên chia đều số tiết chiều
       }
     }
   });
@@ -331,8 +372,10 @@ export function isSlotAllowedForClass(
   p: number,
   classRuleMap?: Map<string, ClassShiftRule>
 ): boolean {
-  if (!isValidSlot(d, p)) return false;
-  if (!classRuleMap || !classRuleMap.has(cls)) return true;
+  if (d < 0 || d >= DAYS.length || p < 0 || p >= PERIODS.length) return false;
+  if (!classRuleMap || !classRuleMap.has(cls)) {
+    return isValidSlot(d, p);
+  }
 
   const rule = classRuleMap.get(cls)!;
   const isMorning = p < 5;
@@ -1874,7 +1917,6 @@ function resolveUnassignedWithEjectionChain(
       // Dời tiết đang chiếm ô (d, p) sang một ô trống khác (d_new, p_new) của lớp cls
       for (let d = 0; d < DAYS.length && !placed; d++) {
         for (let p = 0; p < PERIODS.length && !placed; p++) {
-          if (!isValidSlot(d, p)) continue;
           if (fixedSlots.has(`${cls}_${d}_${p}`)) continue;
           if (!isSlotAllowedForClass(cls, d, p, classRuleMap)) continue;
           const occupier = grid[cls]?.[d]?.[p];
@@ -1935,7 +1977,6 @@ function resolveUnassignedWithEjectionChain(
       // Nếu giáo viên `teacher` đang bận ở lớp khác tại (d, p), thử dời tiết của lớp đó sang ô trống khác
       for (let d = 0; d < DAYS.length && !placed; d++) {
         for (let p = 0; p < PERIODS.length && !placed; p++) {
-          if (!isValidSlot(d, p)) continue;
           if (grid[cls]?.[d]?.[p] !== null) continue; // ô của cls phải đang trống
           if (fixedSlots.has(`${cls}_${d}_${p}`)) continue;
           if (!isSlotAllowedForClass(cls, d, p, classRuleMap)) continue;
@@ -2010,6 +2051,115 @@ function resolveUnassignedWithEjectionChain(
 }
 
 /**
+ * Đảm bảo nguyên tắc sư phạm cốt lõi: "TÍCH CHỌN Ở ĐÂU THÌ TKB BẮT BUỘC PHẢI XẾP VÀO ĐÓ"
+ * Quét toàn bộ các lớp. Nếu lớp nào có ngày d nằm trong afternoonDays (được Thầy/Cô tích chọn học chiều)
+ * mà số tiết chiều của ngày đó = 0:
+ * Tìm 1-2 tiết từ ngày sáng có 5 tiết (hoặc từ ngày chiều khác có >= 3 tiết) để dời về slot 5, 6 của ngày bị bỏ trống.
+ */
+export function ensureActiveShiftCoverage(
+  grid: TimetableGrid,
+  targetClasses: string[],
+  classRuleMap?: Map<string, ClassShiftRule>,
+  teacherBusySet?: Set<string>,
+  fixedSlots?: Set<string>
+): number {
+  if (!classRuleMap) return 0;
+  let rebalancedCount = 0;
+  const tBusy = teacherBusySet || new Set<string>();
+  const fSlots = fixedSlots || new Set<string>();
+
+  for (const cls of targetClasses) {
+    if (!classRuleMap.has(cls)) continue;
+    const rule = classRuleMap.get(cls)!;
+    if (!rule.afternoonDays || rule.afternoonDays.length === 0) continue;
+
+    for (const emptyDay of rule.afternoonDays) {
+      // Đếm số tiết chiều hiện tại của ngày emptyDay
+      let currentAftCount = 0;
+      for (let p = 5; p < 8; p++) {
+        if (grid[cls]?.[emptyDay]?.[p]) currentAftCount++;
+      }
+
+      if (currentAftCount > 0) continue; // Đã có tiết chiều, đạt yêu cầu!
+
+      // Buổi chiều này đang có 0 tiết! Cần điều phối ít nhất 1-2 tiết về đây
+      // Thử dời vào slot 5 (Tiết 1 chiều) và slot 6 (Tiết 2 chiều)
+      const targetSlotsToFill = [5, 6];
+
+      for (const targetP of targetSlotsToFill) {
+        if (grid[cls][emptyDay][targetP] !== null) continue;
+
+        let moved = false;
+
+        // Ưu tiên 1: Lấy tiết cuối của một ngày sáng có đủ 5 tiết (slot 4)
+        // hoặc từ một ngày sáng có 4 tiết mà ngày đó không học chiều
+        const candidateSourceSlots: { d: number; p: number }[] = [];
+        for (let d = 0; d < DAYS.length; d++) {
+          if (d === emptyDay) continue;
+          let mCount = 0;
+          for (let p = 0; p < 5; p++) {
+            if (grid[cls]?.[d]?.[p]) mCount++;
+          }
+          if (mCount >= 5) {
+            candidateSourceSlots.push({ d, p: 4 });
+          } else if (mCount >= 4 && (!rule.afternoonDays.includes(d) || grid[cls]?.[d]?.[5] === null)) {
+            candidateSourceSlots.push({ d, p: 3 });
+          }
+        }
+
+        // Ưu tiên 2: Lấy tiết cuối từ một ngày chiều khác có >= 3 tiết (slot 7) hoặc >= 2 tiết (slot 6)
+        for (let d = 0; d < DAYS.length; d++) {
+          if (d === emptyDay) continue;
+          let aCount = 0;
+          for (let p = 5; p < 8; p++) {
+            if (grid[cls]?.[d]?.[p]) aCount++;
+          }
+          if (aCount >= 3) {
+            candidateSourceSlots.push({ d, p: 7 });
+          } else if (aCount >= 2 && candidateSourceSlots.length === 0) {
+            candidateSourceSlots.push({ d, p: 6 });
+          }
+        }
+
+        for (const { d: srcD, p: srcP } of candidateSourceSlots) {
+          const sess = grid[cls]?.[srcD]?.[srcP];
+          if (!sess) continue;
+          if (fSlots.has(`${cls}_${srcD}_${srcP}`)) continue;
+
+          // Kiểm tra giáo viên có bận ở (emptyDay, targetP) không
+          if (isTeacherBusyAt(grid, sess.teacher, emptyDay, targetP, tBusy, cls, targetClasses)) continue;
+
+          // Kiểm tra số tiết cùng môn trong ngày emptyDay
+          let countSameToday = 0;
+          for (let p = 0; p < PERIODS.length; p++) {
+            if (grid[cls]?.[emptyDay]?.[p]?.subject === sess.subject) countSameToday++;
+          }
+          const maxPerDay = (sess.subject === 'Toán' || sess.subject === 'Ngữ văn') ? 2 : 1;
+          if (countSameToday >= maxPerDay) continue;
+
+          // Thử di chuyển
+          grid[cls][srcD][srcP] = null;
+          grid[cls][emptyDay][targetP] = { ...sess, day: emptyDay, period: targetP };
+
+          // Kiểm tra không tạo lỗ lủng
+          if (!checkClassHasGaps(grid, cls, srcD) && !checkClassHasGaps(grid, cls, emptyDay)) {
+            moved = true;
+            rebalancedCount++;
+            break;
+          } else {
+            // Hoàn tác
+            grid[cls][srcD][srcP] = sess;
+            grid[cls][emptyDay][targetP] = null;
+          }
+        }
+      }
+    }
+  }
+
+  return rebalancedCount;
+}
+
+/**
  * GIAI ĐOẠN 1: Tạo bảng Thời khóa biểu ban đầu với MRV + Ejection Chain
  */
 function generateInitialGrid(data: InputRow[], constraints: Constraint[] = [], allowCrossDaySwapping = false) {
@@ -2032,7 +2182,8 @@ function generateInitialGrid(data: InputRow[], constraints: Constraint[] = [], a
   const baseOrderedSlots: { d: number; p: number }[] = [];
   for (let p = 0; p < PERIODS.length; p++) {
     for (let d = 0; d < DAYS.length; d++) {
-      if (isValidSlot(d, p)) {
+      const anyClassAllowed = targetClasses.some(cls => isSlotAllowedForClass(cls, d, p, classRuleMap));
+      if (anyClassAllowed || isValidSlot(d, p, constraints)) {
         baseOrderedSlots.push({ d, p });
       }
     }
@@ -2126,8 +2277,13 @@ function generateInitialGrid(data: InputRow[], constraints: Constraint[] = [], a
       return (sumB + (Math.random() - 0.5)) - sumA;
     });
 
+    // 🛡️ NGUYÊN TẮC BẤT BIẾN: TÍCH CHỌN Ở ĐÂU THÌ TKB PHẢI XẾP VÀO ĐÓ
+    // Thứ tự ưu tiên slot: Xen kẽ Tiết 1, 2 chiều (slot 5, 6) ngay sau Tiết 3 sáng (slot 2)
+    // để các ngày chiều được cấu hình (ví dụ Chiều Thứ 3, Chiều Thứ 4) đều được cấp tiết,
+    // không bị tình trạng các tiết sáng vét sạch toàn bộ số tiết của lớp!
+    const periodPriorityOrder = [0, 1, 2, 5, 3, 6, 4, 7];
     const runOrderedSlots: typeof baseOrderedSlots = [];
-    for (let p = 0; p < PERIODS.length; p++) {
+    for (const p of periodPriorityOrder) {
       const slotsInP = baseOrderedSlots.filter(s => s.p === p);
       slotsInP.sort(() => Math.random() - 0.5);
       runOrderedSlots.push(...slotsInP);
@@ -2216,6 +2372,7 @@ function generateInitialGrid(data: InputRow[], constraints: Constraint[] = [], a
   }
 
   compactAndHealClassGaps(bestGrid, teacherBusySet, fixedSlots, classRuleMap, targetClasses, allowCrossDaySwapping);
+  ensureActiveShiftCoverage(bestGrid, targetClasses, classRuleMap, teacherBusySet, fixedSlots);
 
   return { grid: bestGrid, unassigned: bestUnassigned, unplacedCount: minUnplaced, classRuleMap };
 }
@@ -2237,7 +2394,7 @@ function optimizeWithSimulatedAnnealing(
     : (Object.keys(initialGrid).length > 0 ? Object.keys(initialGrid) : CLASSES);
 
   let currentGrid = JSON.parse(JSON.stringify(initialGrid)) as TimetableGrid;
-  let currentPenalty = calculatePenalty(currentGrid, 0, classesList);
+  let currentPenalty = calculatePenalty(currentGrid, 0, classesList, classRuleMap);
 
   let bestGrid = JSON.parse(JSON.stringify(currentGrid)) as TimetableGrid;
   let bestPenalty = currentPenalty;
@@ -2264,7 +2421,7 @@ function optimizeWithSimulatedAnnealing(
     const d2 = Math.floor(Math.random() * DAYS.length);
     const p2 = Math.floor(Math.random() * PERIODS.length);
 
-    if (!isValidSlot(d1, p1) || !isValidSlot(d2, p2)) continue;
+    if (!isValidSlot(d1, p1, constraints) || !isValidSlot(d2, p2, constraints)) continue;
     if (d1 === d2 && p1 === p2) continue;
 
     // Không hoán đổi các ô cố định
@@ -2350,7 +2507,7 @@ function optimizeWithSimulatedAnnealing(
       continue;
     }
 
-    const newPenalty = calculatePenalty(currentGrid, 0, classesList);
+    const newPenalty = calculatePenalty(currentGrid, 0, classesList, classRuleMap);
     const delta = newPenalty - currentPenalty;
 
     // Chấp nhận bước chuyển theo tiêu chuẩn Metropolis
@@ -2370,6 +2527,7 @@ function optimizeWithSimulatedAnnealing(
   }
 
   const crossDaySwapsCount = compactAndHealClassGaps(bestGrid, teacherBusySet, fixedSlots, classRuleMap, classesList, allowCrossDaySwapping, crossDayTracker);
+  ensureActiveShiftCoverage(bestGrid, classesList, classRuleMap, teacherBusySet, fixedSlots);
 
   return { grid: bestGrid, crossDaySwapsCount };
 }
@@ -2646,6 +2804,9 @@ export const generateSchedule = (
     }
   });
   const teacherBusySet = buildTeacherBusySet(constraints);
+
+  // 🛡️ NGUYÊN TẮC BẤT BIẾN: TÍCH CHỌN Ở ĐÂU THÌ TKB BẮT BUỘC PHẢI XẾP VÀO ĐÓ
+  ensureActiveShiftCoverage(optimizedGrid, targetClasses, initial.classRuleMap, teacherBusySet, fixedSlots);
 
   const { resolvedCount, evictedUnassigned } = desynchronizeTeacherCollisions(
     optimizedGrid,

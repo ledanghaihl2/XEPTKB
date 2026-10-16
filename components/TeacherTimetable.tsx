@@ -1,14 +1,15 @@
 import React, { useMemo, useState } from 'react';
-import { TimetableGrid, ShiftType } from '../types';
+import { TimetableGrid, ShiftType, Constraint } from '../types';
 import { DAYS, PERIODS, CLASSES, isValidSlot, SHIFT_OPTIONS, isPeriodInShift } from '../constants';
 
 interface Props {
   schedule: TimetableGrid;
   shift?: ShiftType;
   onShiftChange?: (shift: ShiftType) => void;
+  constraints?: Constraint[];
 }
 
-const TeacherTimetable: React.FC<Props> = ({ schedule, shift, onShiftChange }) => {
+const TeacherTimetable: React.FC<Props> = ({ schedule, shift, onShiftChange, constraints }) => {
   const [selectedTeacher, setSelectedTeacher] = useState<string>('Tất cả');
   const [internalShift, setInternalShift] = useState<ShiftType>('ALL');
   const currentShift = shift ?? internalShift;
@@ -115,7 +116,7 @@ const TeacherTimetable: React.FC<Props> = ({ schedule, shift, onShiftChange }) =
              
              {PERIODS.map((period, pIdx) => {
                if (!isPeriodInShift(pIdx, currentShift)) return null;
-               const isRowValid = DAYS.some((_, dIdx) => isValidSlot(dIdx, pIdx));
+               const isRowValid = DAYS.some((_, dIdx) => isValidSlot(dIdx, pIdx, constraints));
                if (!isRowValid) return null;
 
                return (
@@ -124,7 +125,7 @@ const TeacherTimetable: React.FC<Props> = ({ schedule, shift, onShiftChange }) =
                     {period}
                   </div>
                   {DAYS.map((day, dIdx) => {
-                    const isValid = isValidSlot(dIdx, pIdx);
+                    const isValid = isValidSlot(dIdx, pIdx, constraints);
                     if (!isValid) {
                         return <div key={day} className="bg-gray-200"></div>;
                     }

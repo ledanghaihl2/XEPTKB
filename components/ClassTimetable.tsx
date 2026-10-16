@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
-import { TimetableGrid as TimetableGridType, ShiftType } from '../types';
-import { DAYS, PERIODS, CLASSES, isValidSlot, SHIFT_OPTIONS, isPeriodInShift } from '../constants';
+import { TimetableGrid as TimetableGridType, ShiftType, Constraint } from '../types';
+import { DAYS, PERIODS, CLASSES, isSlotValidForClass, SHIFT_OPTIONS, isPeriodInShift } from '../constants';
 
 interface Props {
   schedule: TimetableGridType;
   onEditCell?: (className: string, day: number, period: number, subject: string, teacher: string) => void;
   shift?: ShiftType;
   onShiftChange?: (shift: ShiftType) => void;
+  constraints?: Constraint[];
 }
 
-const ClassTimetable: React.FC<Props> = ({ schedule, onEditCell, shift, onShiftChange }) => {
+const ClassTimetable: React.FC<Props> = ({ schedule, onEditCell, shift, onShiftChange, constraints }) => {
   const [selectedClass, setSelectedClass] = useState<string>('Tất cả');
   const [internalShift, setInternalShift] = useState<ShiftType>('ALL');
   const currentShift = shift ?? internalShift;
@@ -115,7 +116,7 @@ const ClassTimetable: React.FC<Props> = ({ schedule, onEditCell, shift, onShiftC
              
              {PERIODS.map((period, pIdx) => {
                if (!isPeriodInShift(pIdx, currentShift)) return null;
-               const isRowValid = DAYS.some((_, dIdx) => isValidSlot(dIdx, pIdx));
+               const isRowValid = DAYS.some((_, dIdx) => isSlotValidForClass(cls, dIdx, pIdx, constraints));
                if (!isRowValid) return null;
 
                return (
@@ -124,7 +125,7 @@ const ClassTimetable: React.FC<Props> = ({ schedule, onEditCell, shift, onShiftC
                     {period}
                   </div>
                   {DAYS.map((day, dIdx) => {
-                    const isValid = isValidSlot(dIdx, pIdx);
+                    const isValid = isSlotValidForClass(cls, dIdx, pIdx, constraints);
                     if (!isValid) {
                         return <div key={day} className="bg-gray-200"></div>;
                     }

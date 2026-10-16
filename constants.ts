@@ -1,4 +1,4 @@
-import { InputRow, ShiftType } from './types';
+import { InputRow, ShiftType, Constraint } from './types';
 
 export const STORAGE_KEY_ALLOW_CROSS_DAY_SWAP = 'smart_scheduler_allow_cross_day_swap';
 
@@ -21,14 +21,135 @@ export const isPeriodInShift = (periodIdx: number, shift: ShiftType): boolean =>
   return true;
 };
 
-export const isValidSlot = (dayIdx: number, periodIdx: number) => {
-  if (dayIdx === 0 || dayIdx === 1) { // Thứ 2, Thứ 3
-    if (periodIdx === 4) return false; // Sáng 5
-    return true;
-  } else { // Thứ 4, 5, 6
-    if (periodIdx >= 5) return false; // Chiều 1, 2, 3
-    return true;
+/**
+ * Trích xuất cấu hình ca học đang hiệu lực từ danh sách ràng buộc hoặc LocalStorage
+ */
+export const getActiveShiftConstraints = (customConstraints?: Constraint[]): {
+  morningDays: number[];
+  afternoonDays: number[];
+  morningPeriodCap: number;
+  afternoonPeriodCap: number;
+} | null => {
+  let list: Constraint[] = customConstraints || [];
+  if (!list || list.length === 0) {
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('scheduler_constraints');
+        if (saved) list = JSON.parse(saved);
+      } catch (e) {
+        // ignore
+      }
+    }
   }
+
+  if (!list || list.length === 0) return null;
+
+  // 1. Tìm ràng buộc ca học toàn trường (SCHOOL_SHIFT hoặc CLASS_SHIFT cho ALL / TOAN_TRUONG)
+  const schoolWide = list.find(c => 
+    c.type === 'SCHOOL_SHIFT' || 
+    (c.type === 'CLASS_SHIFT' && (!c.className || c.className === 'ALL' || c.className === 'TOAN_TRUONG'))
+  );
+
+  if (schoolWide && (schoolWide.morningDays || schoolWide.afternoonDays)) {
+    return {
+      morningDays: schoolWide.morningDays || [0, 1, 2, 3, 4],
+      afternoonDays: schoolWide.afternoonDays || [],
+      morningPeriodCap: schoolWide.morningPeriodCap ?? 5,
+      afternoonPeriodCap: schoolWide.afternoonPeriodCap ?? 3
+    };
+  }
+
+  // 2. Nếu không có cấu hình toàn trường, tổng hợp tập hợp hợp (union) từ tất cả CLASS_SHIFT
+  const classShifts = list.filter(c => c.type === 'CLASS_SHIFT');
+  if (classShifts.length > 0) {
+    const morningDaysSet = new Set<number>();
+    const afternoonDaysSet = new Set<number>();
+    let maxMorningCap = 5;
+    let maxAfternoonCap = 3;
+
+    classShifts.forEach(cs => {
+      cs.morningDays?.forEach(d => morningDaysSet.add(d));
+      cs.afternoonDays?.forEach(d => afternoonDaysSet.add(d));
+      if (cs.morningPeriodCap && cs.morningPeriodCap > maxMorningCap) maxMorningCap = cs.morningPeriodCap;
+      if (cs.afternoonPeriodCap && cs.afternoonPeriodCap > maxAfternoonCap) maxAfternoonCap = cs.afternoonPeriodCap;
+    });
+
+    return {
+      morningDays: Array.from(morningDaysSet),
+      afternoonDays: Array.from(afternoonDaysSet),
+      morningPeriodCap: maxMorningCap,
+      afternoonPeriodCap: maxAfternoonCap
+    };
+  }
+
+  return null;
+};
+
+/**
+ * Kiểm tra xem một ô (ngày, tiết) có hợp lệ với lịch hoạt động của trường hay không.
+ * Tự động đồng bộ theo ma trận ca học Thầy/Cô đã tích chọn (Sáng/Chiều từng thứ).
+ */
+export const isValidSlot = (dayIdx: number, periodIdx: number, customConstraints?: Constraint[]): boolean => {
+  if (dayIdx < 0 || dayIdx >= 5 || periodIdx < 0 || periodIdx >= 8) return false;
+
+  const activeShift = getActiveShiftConstraints(customConstraints);
+  if (activeShift) {
+    const isMorning = periodIdx < 5;
+    if (isMorning) {
+      if (!activeShift.morningDays.includes(dayIdx)) return false;
+      if (periodIdx >= activeShift.morningPeriodCap) return false;
+      return true;
+    } else {
+      if (!activeShift.afternoonDays.includes(dayIdx)) return false;
+      if ((periodIdx - 5) >= activeShift.afternoonPeriodCap) return false;
+      return true;
+    }
+  }
+
+  // Mặc định an toàn nếu chưa có cấu hình: Sáng 5 tiết, Chiều 3 tiết từ T2 đến T6
+  return true;
+};
+
+/**
+ * Kiểm tra xem một ô (ngày, tiết) có hợp lệ riêng với một lớp cụ thể hay không.
+ */
+export const isSlotValidForClass = (
+  className: string,
+  dayIdx: number,
+  periodIdx: number,
+  customConstraints?: Constraint[]
+): boolean => {
+  if (dayIdx < 0 || dayIdx >= 5 || periodIdx < 0 || periodIdx >= 8) return false;
+
+  let list: Constraint[] = customConstraints || [];
+  if (!list || list.length === 0) {
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('scheduler_constraints');
+        if (saved) list = JSON.parse(saved);
+      } catch (e) {
+        // ignore
+      }
+    }
+  }
+
+  if (list && list.length > 0) {
+    const classRule = list.find(c => c.type === 'CLASS_SHIFT' && c.className === className);
+    if (classRule && (classRule.morningDays || classRule.afternoonDays)) {
+      const isMorning = periodIdx < 5;
+      if (isMorning) {
+        if (!classRule.morningDays?.includes(dayIdx)) return false;
+        if (periodIdx >= (classRule.morningPeriodCap ?? 5)) return false;
+        return true;
+      } else {
+        if (!classRule.afternoonDays?.includes(dayIdx)) return false;
+        if ((periodIdx - 5) >= (classRule.afternoonPeriodCap ?? 3)) return false;
+        return true;
+      }
+    }
+  }
+
+  return isValidSlot(dayIdx, periodIdx, list);
 };
 
 export const CLASSES = ['6A', '6B', '6C', '7A', '7B', '7C', '8A', '8B', '8C', '9A', '9B'];
