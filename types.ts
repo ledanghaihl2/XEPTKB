@@ -29,6 +29,10 @@ export interface ScheduleResult {
   };
 }
 
+export interface GenerateScheduleOptions {
+  allowCrossDaySwapping?: boolean;
+}
+
 export enum ReportType {
   TEACHER = 'TEACHER',
   CLASS = 'CLASS',

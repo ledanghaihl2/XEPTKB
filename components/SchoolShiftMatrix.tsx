@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Constraint, InputRow } from '../types';
-import { DAYS } from '../constants';
+import { DAYS, STORAGE_KEY_ALLOW_CROSS_DAY_SWAP } from '../constants';
 
 const STORAGE_KEY_SHIFT_CAPS = 'tkb_shift_period_caps';
 
@@ -45,6 +45,8 @@ interface Props {
     updates: { className: string; morningDays: number[]; afternoonDays: number[]; morningPeriodCap?: number; afternoonPeriodCap?: number }[],
     schoolWideUpdate?: { morningDays: number[]; afternoonDays: number[]; morningPeriodCap?: number; afternoonPeriodCap?: number }
   ) => void;
+  allowCrossDaySwapping?: boolean;
+  onToggleCrossDaySwapping?: (val?: boolean) => void;
 }
 
 export const SchoolShiftMatrix: React.FC<Props> = ({
@@ -55,7 +57,9 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
   onBatchUpdateClassShifts,
   onUpdateSchoolShift,
   onResetAllClassesToSchoolShift,
-  onBatchUpdateCustomClassShifts
+  onBatchUpdateCustomClassShifts,
+  allowCrossDaySwapping: allowCrossDaySwappingProp,
+  onToggleCrossDaySwapping
 }) => {
   const [selectedGrade, setSelectedGrade] = useState<string>('ALL');
   
@@ -89,6 +93,42 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
   const [isPeriodCapsModalOpen, setIsPeriodCapsModalOpen] = useState<boolean>(false);
   const [tempMorningCap, setTempMorningCap] = useState<number>(5);
   const [tempAfternoonCap, setTempAfternoonCap] = useState<number>(3);
+
+  // State quản lý Hoán đổi liên ngày khi kẹt cứng (Cross-day Teacher Swapping)
+  const [allowCrossDaySwappingState, setAllowCrossDaySwappingState] = useState<boolean>(() => {
+    if (typeof allowCrossDaySwappingProp === 'boolean') return allowCrossDaySwappingProp;
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_ALLOW_CROSS_DAY_SWAP);
+      if (saved !== null) return saved === 'true';
+    } catch (e) {
+      // ignore
+    }
+    return true; // Mặc định khuyến nghị BẬT
+  });
+
+  useEffect(() => {
+    if (typeof allowCrossDaySwappingProp === 'boolean') {
+      setAllowCrossDaySwappingState(allowCrossDaySwappingProp);
+    }
+  }, [allowCrossDaySwappingProp]);
+
+  const effectiveCrossDay = typeof allowCrossDaySwappingProp === 'boolean' ? allowCrossDaySwappingProp : allowCrossDaySwappingState;
+  const [tempAllowCrossDaySwapping, setTempAllowCrossDaySwapping] = useState<boolean>(effectiveCrossDay);
+
+  const handleToggleCrossDaySwapping = useCallback((val?: boolean) => {
+    const nextVal = typeof val === 'boolean' ? val : !effectiveCrossDay;
+    setAllowCrossDaySwappingState(nextVal);
+    setTempAllowCrossDaySwapping(nextVal);
+    try {
+      localStorage.setItem(STORAGE_KEY_ALLOW_CROSS_DAY_SWAP, String(nextVal));
+    } catch (e) {
+      // ignore
+    }
+    if (onToggleCrossDaySwapping) {
+      onToggleCrossDaySwapping(nextVal);
+    }
+    window.dispatchEvent(new CustomEvent('smart_scheduler_cross_day_swap_changed', { detail: { value: nextVal } }));
+  }, [effectiveCrossDay, onToggleCrossDaySwapping]);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -124,6 +164,7 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
   const handleOpenPeriodCapsModal = useCallback(() => {
     setTempMorningCap(shiftPeriodCaps.morningCap);
     setTempAfternoonCap(shiftPeriodCaps.afternoonCap);
+    setTempAllowCrossDaySwapping(effectiveCrossDay);
     // Đồng bộ định mức tạm thời cho từng khối (chỉ lấy các khối đã có định mức riêng)
     const initialTemps: Record<string, { morningCap: number; afternoonCap: number }> = {};
     availableGrades.forEach(gr => {
@@ -134,7 +175,7 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
     setTempGradePeriodCaps(initialTemps);
     setActiveCapTab('school');
     setIsPeriodCapsModalOpen(true);
-  }, [shiftPeriodCaps, availableGrades, gradePeriodCaps]);
+  }, [shiftPeriodCaps, availableGrades, gradePeriodCaps, effectiveCrossDay]);
 
   // Phím tắt bàn phím:
   // - Alt + C: Bật / Tắt nhanh Modal cấu hình định mức ca học (Custom Shift Period Caps)
@@ -336,6 +377,9 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
       });
     }
 
+    // Lưu trạng thái Hoán đổi liên ngày
+    handleToggleCrossDaySwapping(tempAllowCrossDaySwapping);
+
     const customGrades = Object.keys(cleanedGradeCaps);
     setToastMessage(
       customGrades.length > 0
@@ -351,6 +395,7 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
     setTempMorningCap(5);
     setTempAfternoonCap(3);
     setTempGradePeriodCaps({});
+    setTempAllowCrossDaySwapping(true);
   };
 
   // Tính số tiết phân công của từng lớp
@@ -966,6 +1011,34 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
                     )}
                     <kbd className="text-[10px] bg-teal-100/90 text-teal-900 px-1 py-0.2 rounded border border-teal-300/80 font-mono font-bold">Alt+C</kbd>
                   </button>
+                  <span className="text-teal-400 font-normal">|</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextVal = !effectiveCrossDay;
+                      handleToggleCrossDaySwapping(nextVal);
+                      setToastMessage(
+                        nextVal
+                          ? '✓ Đã BẬT Hoán đổi liên ngày: Thuật toán sẽ tự động luân chuyển tiết qua các ngày khi kẹt cứng Tiết 1!'
+                          : '⚠️ Đã TẮT Hoán đổi liên ngày: Chỉ hoán đổi nội bộ trong cùng 1 ngày.'
+                      );
+                      setTimeout(() => setToastMessage(null), 3500);
+                    }}
+                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md font-bold text-xs border transition-all cursor-pointer shadow-2xs active:scale-95 ${
+                      effectiveCrossDay
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500 shadow-emerald-700/20'
+                        : 'bg-slate-200 hover:bg-slate-300 text-slate-700 border-slate-300'
+                    }`}
+                    title="Click để BẬT/TẮT hoán đổi giáo viên liên ngày khi kẹt cứng Tiết 1"
+                  >
+                    <span>🔄</span>
+                    <span>Hoán đổi liên ngày:</span>
+                    <span className={`px-1 py-0.2 rounded text-[10px] font-extrabold uppercase ${
+                      effectiveCrossDay ? 'bg-white text-emerald-800' : 'bg-slate-400 text-white'
+                    }`}>
+                      {effectiveCrossDay ? 'Bật' : 'Tắt'}
+                    </span>
+                  </button>
                 </div>
               ) : (
                 <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-gray-100 border border-gray-300 text-gray-600 text-xs flex-wrap">
@@ -992,6 +1065,34 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
                       </span>
                     )}
                     <kbd className="text-[10px] bg-white text-gray-600 px-1 py-0.2 rounded border border-gray-300 font-mono font-bold">Alt+C</kbd>
+                  </button>
+                  <span className="text-gray-300">|</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextVal = !effectiveCrossDay;
+                      handleToggleCrossDaySwapping(nextVal);
+                      setToastMessage(
+                        nextVal
+                          ? '✓ Đã BẬT Hoán đổi liên ngày: Thuật toán sẽ tự động luân chuyển tiết qua các ngày khi kẹt cứng Tiết 1!'
+                          : '⚠️ Đã TẮT Hoán đổi liên ngày: Chỉ hoán đổi nội bộ trong cùng 1 ngày.'
+                      );
+                      setTimeout(() => setToastMessage(null), 3500);
+                    }}
+                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md font-bold text-xs border transition-all cursor-pointer shadow-2xs active:scale-95 ${
+                      effectiveCrossDay
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500 shadow-emerald-700/20'
+                        : 'bg-slate-200 hover:bg-slate-300 text-slate-700 border-slate-300'
+                    }`}
+                    title="Click để BẬT/TẮT hoán đổi giáo viên liên ngày khi kẹt cứng Tiết 1"
+                  >
+                    <span>🔄</span>
+                    <span>Hoán đổi liên ngày:</span>
+                    <span className={`px-1 py-0.2 rounded text-[10px] font-extrabold uppercase ${
+                      effectiveCrossDay ? 'bg-white text-emerald-800' : 'bg-slate-400 text-white'
+                    }`}>
+                      {effectiveCrossDay ? 'Bật' : 'Tắt'}
+                    </span>
                   </button>
                 </div>
               )}
@@ -2571,6 +2672,77 @@ export const SchoolShiftMatrix: React.FC<Props> = ({
                       );
                     })()}
                   </div>
+
+                  {/* Phần Cấu hình Nâng cao: Hoán đổi giáo viên liên ngày (Cross-day Teacher Swapping) */}
+                  <div className="p-4 bg-gradient-to-r from-slate-50 to-teal-50/50 rounded-xl border border-teal-200 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-start gap-2.5">
+                        <span className="text-xl mt-0.5">🔄</span>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-extrabold text-sm text-slate-900">
+                              Hoán đổi giáo viên liên ngày khi kẹt cứng (Cross-day Swapping)
+                            </span>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-teal-100 text-teal-800 border border-teal-300">
+                                Thuật toán Pareto
+                              </span>
+                              <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                Khuyến nghị BẬT
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                              Khi các lớp bị kẹt cứng Tiết 1 do các giáo viên bận kín lịch trong ngày, hệ thống sẽ mở rộng mạng lưới luân chuyển tiết sang các ngày khác trong tuần để giải phóng ô Tiết 1 cho học sinh.
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Công tắc Toggle Switch */}
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setTempAllowCrossDaySwapping(!tempAllowCrossDaySwapping)}
+                            className={`relative inline-flex h-6 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                              tempAllowCrossDaySwapping ? 'bg-teal-600' : 'bg-slate-300'
+                            }`}
+                            role="switch"
+                            aria-checked={tempAllowCrossDaySwapping}
+                            title="Bật / Tắt hoán đổi liên ngày khi kẹt cứng"
+                          >
+                            <span
+                              aria-hidden="true"
+                              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                                tempAllowCrossDaySwapping ? 'translate-x-6' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                          <span className={`text-[10px] font-extrabold uppercase ${
+                            tempAllowCrossDaySwapping ? 'text-teal-700' : 'text-slate-400'
+                          }`}>
+                            {tempAllowCrossDaySwapping ? 'Đang BẬT' : 'Đang TẮT'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Chi tiết nguyên tắc an toàn & bảo toàn sư phạm */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-600 pt-2.5 border-t border-teal-100/80">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-emerald-600 font-bold">✓</span>
+                          <span>Chỉ hoán đổi cùng ca (Sáng ↔ Sáng, Chiều ↔ Chiều)</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-emerald-600 font-bold">✓</span>
+                          <span>Không vượt số tiết môn/ngày (Toán/Văn tối đa 2, môn khác 1)</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-emerald-600 font-bold">✓</span>
+                          <span>Nguyên tắc Pareto: Tuyệt đối không tăng tiết trống của giáo viên</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-emerald-600 font-bold">✓</span>
+                          <span>Bảo toàn tính liền mạch, không tạo tiết lủng/ngắt quãng học sinh</span>
+                        </div>
+                      </div>
+                    </div>
                 </>
               ) : (
                 <>

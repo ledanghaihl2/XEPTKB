@@ -12,6 +12,8 @@ interface Props {
   classes: string[];
   subjects: string[];
   data?: InputRow[];
+  allowCrossDaySwapping?: boolean;
+  onToggleCrossDaySwapping?: (val?: boolean) => void;
 }
 
 const ConstraintsEditor: React.FC<Props> = ({ 
@@ -22,7 +24,9 @@ const ConstraintsEditor: React.FC<Props> = ({
   teachers,
   classes,
   subjects,
-  data = []
+  data = [],
+  allowCrossDaySwapping,
+  onToggleCrossDaySwapping
 }) => {
   const [activeView, setActiveView] = useState<'matrix' | 'form_list'>('matrix');
   const [type, setType] = useState<ConstraintType>('CLASS_SHIFT');
@@ -435,6 +439,8 @@ const ConstraintsEditor: React.FC<Props> = ({
             onUpdateSchoolShift={handleUpdateSchoolShift}
             onResetAllClassesToSchoolShift={handleResetAllClassesToSchoolShift}
             onBatchUpdateCustomClassShifts={handleBatchUpdateCustomClassShifts}
+            allowCrossDaySwapping={allowCrossDaySwapping}
+            onToggleCrossDaySwapping={onToggleCrossDaySwapping}
           />
           
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-teal-50/60 rounded-xl border border-teal-200">

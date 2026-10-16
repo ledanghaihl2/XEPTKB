@@ -1,4 +1,4 @@
-import { InputRow, TimetableGrid, ScheduleResult, Constraint, ShiftType, ClassSession } from '../types';
+import { InputRow, TimetableGrid, ScheduleResult, Constraint, ShiftType, ClassSession, GenerateScheduleOptions } from '../types';
 import { DAYS, PERIODS, CLASSES, isValidSlot, isPeriodInShift } from '../constants';
 
 // Nhóm các môn học trọng tâm (ưu tiên học vào các tiết sáng đầu buổi)
@@ -986,17 +986,617 @@ function applyTeacherPairingSwappingNetwork(
 }
 
 /**
+ * Mạng lưới hoán đổi liên ngày (Cross-day Teacher Swapping Network):
+ * Kích hoạt khi các bước dồn tiết và hoán đổi nội bộ trong ngày bị bế tắc do giáo viên bận kín lịch.
+ * Luân chuyển tiết giữa ngày d1 và ngày d2 khác trong tuần theo 2 kênh:
+ * - Kênh 1: Hoán đổi liên ngày của Lớp Chặn (Blocking Class Cross-day Swap)
+ * - Kênh 2: Hoán đổi liên ngày nội bộ lớp khởi tạo (Initiator Class Cross-day Swap)
+ * Đảm bảo: Cùng ca học, không vượt số tiết môn/ngày, không tăng tiết trống giáo viên (Pareto), không lủng tiết học sinh.
+ */
+function applyCrossDaySwappingNetwork(
+  grid: TimetableGrid,
+  targetClasses: string[],
+  teacherBusySet: Set<string>,
+  fixedSlots: Set<string>,
+  classRuleMap?: Map<string, ClassShiftRule>
+): number {
+  let totalCrossDayApplied = 0;
+
+  for (const cls of targetClasses) {
+    for (let d1 = 0; d1 < DAYS.length; d1++) {
+      // --- 1. XỬ LÝ CA SÁNG (Tiết 0..4, mục tiêu: Tiết 1 = slot 0) ---
+      const morningSlots: number[] = [];
+      for (let p = 0; p < 5; p++) {
+        if (grid[cls]?.[d1]?.[p]) morningSlots.push(p);
+      }
+
+      if (morningSlots.length > 0 && morningSlots[0] > 0) {
+        const targetP = 0;
+        let solved = false;
+
+        for (let i = morningSlots.length - 1; i >= 0 && !solved; i--) {
+          const srcP = morningSlots[i];
+          if (fixedSlots.has(`${cls}_${d1}_${srcP}`)) continue;
+
+          const session0 = grid[cls][d1][srcP];
+          if (!session0) continue;
+          const T0 = session0.teacher;
+
+          if (teacherBusySet.has(`${T0}_${d1}_${targetP}`)) continue;
+
+          // Tìm lớp blockingClass đang dùng T0 tại (d1, targetP)
+          let blockingClass: string | null = null;
+          for (const other of targetClasses) {
+            if (other === cls) continue;
+            if (grid[other]?.[d1]?.[targetP]?.teacher === T0) {
+              blockingClass = other;
+              break;
+            }
+          }
+
+          // === KÊNH 1: Hoán đổi liên ngày của Lớp Chặn blockingClass ===
+          if (blockingClass && !fixedSlots.has(`${blockingClass}_${d1}_${targetP}`)) {
+            const sessionBlock = grid[blockingClass][d1][targetP]!;
+
+            for (let d2 = 0; d2 < DAYS.length && !solved; d2++) {
+              if (d2 === d1) continue;
+
+              for (let p2 = 0; p2 < 5 && !solved; p2++) {
+                if (fixedSlots.has(`${blockingClass}_${d2}_${p2}`)) continue;
+                const sessionD2 = grid[blockingClass]?.[d2]?.[p2];
+                if (!sessionD2) continue;
+
+                const T2 = sessionD2.teacher;
+                if (T2 === T0) continue;
+
+                // Ràng buộc ca học của lớp blockingClass
+                if (!isSlotAllowedForClass(blockingClass, d1, targetP, classRuleMap)) continue;
+                if (!isSlotAllowedForClass(blockingClass, d2, p2, classRuleMap)) continue;
+
+                // Kiểm tra T2 rảnh ở (d1, targetP)
+                if (isTeacherBusyAt(grid, T2, d1, targetP, teacherBusySet, blockingClass, targetClasses)) continue;
+
+                // Kiểm tra T0 rảnh ở (d2, p2)
+                if (isTeacherBusyAt(grid, T0, d2, p2, teacherBusySet, blockingClass, targetClasses)) continue;
+
+                // Kiểm tra số tiết môn trong ngày của blockingClass
+                let countD1 = 0;
+                for (let p = 0; p < PERIODS.length; p++) {
+                  if (p === targetP) continue;
+                  if (grid[blockingClass][d1][p]?.subject === sessionD2.subject) countD1++;
+                }
+                const maxD1 = (sessionD2.subject === 'Toán' || sessionD2.subject === 'Ngữ văn') ? 2 : 1;
+                if (countD1 >= maxD1) continue;
+
+                let countD2 = 0;
+                for (let p = 0; p < PERIODS.length; p++) {
+                  if (p === p2) continue;
+                  if (grid[blockingClass][d2][p]?.subject === sessionBlock.subject) countD2++;
+                }
+                const maxD2 = (sessionBlock.subject === 'Toán' || sessionBlock.subject === 'Ngữ văn') ? 2 : 1;
+                if (countD2 >= maxD2) continue;
+
+                if (sessionD2.subject === 'GDTC' && targetP === 4) continue;
+                if (sessionBlock.subject === 'GDTC' && p2 === 4) continue;
+
+                const backup: Record<string, (ClassSession | null)[]> = {
+                  [`${cls}_${d1}`]: [...grid[cls][d1]],
+                  [`${blockingClass}_${d1}`]: [...grid[blockingClass][d1]],
+                  [`${blockingClass}_${d2}`]: [...grid[blockingClass][d2]]
+                };
+
+                const involvedTeachers = new Set<string>([T0, T2]);
+                for (let p = 0; p < 5; p++) {
+                  const s = grid[cls]?.[d1]?.[p];
+                  if (s) involvedTeachers.add(s.teacher);
+                }
+
+                const gapsBefore: Record<string, number> = {};
+                involvedTeachers.forEach(t => {
+                  gapsBefore[t] = calculateTeacherGaps(grid, t, targetClasses);
+                });
+
+                // Thực hiện thử nghiệm
+                grid[blockingClass][d1][targetP] = { ...sessionD2, day: d1, period: targetP };
+                grid[blockingClass][d2][p2] = { ...sessionBlock, day: d2, period: p2 };
+
+                const movingSess = grid[cls][d1][srcP]!;
+                grid[cls][d1][srcP] = null;
+                grid[cls][d1][targetP] = { ...movingSess, day: d1, period: targetP };
+
+                const remMorning: ClassSession[] = [];
+                for (let p = 0; p < 5; p++) {
+                  const sess = grid[cls][d1][p];
+                  if (sess) remMorning.push(sess);
+                }
+                for (let p = 0; p < 5; p++) grid[cls][d1][p] = null;
+                remMorning.forEach((sess, idx) => {
+                  grid[cls][d1][idx] = { ...sess, day: d1, period: idx };
+                });
+
+                let paretoValid = true;
+
+                // Kiểm tra trùng lịch giáo viên
+                for (const t of involvedTeachers) {
+                  for (let p = 0; p < 5; p++) {
+                    let c1 = 0;
+                    for (const c of targetClasses) {
+                      if (grid[c]?.[d1]?.[p]?.teacher === t) c1++;
+                    }
+                    if (c1 > 1 || (c1 > 0 && teacherBusySet.has(`${t}_${d1}_${p}`))) {
+                      paretoValid = false;
+                      break;
+                    }
+
+                    let c2 = 0;
+                    for (const c of targetClasses) {
+                      if (grid[c]?.[d2]?.[p]?.teacher === t) c2++;
+                    }
+                    if (c2 > 1 || (c2 > 0 && teacherBusySet.has(`${t}_${d2}_${p}`))) {
+                      paretoValid = false;
+                      break;
+                    }
+                  }
+                  if (!paretoValid) break;
+
+                  const gapsAfter = calculateTeacherGaps(grid, t, targetClasses);
+                  if (gapsAfter > gapsBefore[t]) {
+                    paretoValid = false;
+                    break;
+                  }
+                }
+
+                if (paretoValid) {
+                  if (checkClassHasGaps(grid, cls, d1)) paretoValid = false;
+                  if (checkClassHasGaps(grid, blockingClass, d1)) paretoValid = false;
+                  if (checkClassHasGaps(grid, blockingClass, d2)) paretoValid = false;
+                }
+
+                if (paretoValid) {
+                  totalCrossDayApplied++;
+                  solved = true;
+                  break;
+                } else {
+                  grid[cls][d1] = backup[`${cls}_${d1}`];
+                  grid[blockingClass][d1] = backup[`${blockingClass}_${d1}`];
+                  grid[blockingClass][d2] = backup[`${blockingClass}_${d2}`];
+                }
+              }
+            }
+          }
+
+          // === KÊNH 2: Hoán đổi liên ngày nội bộ lớp cls ===
+          if (!solved) {
+            for (let d2 = 0; d2 < DAYS.length && !solved; d2++) {
+              if (d2 === d1) continue;
+
+              for (let p2 = 0; p2 < 5 && !solved; p2++) {
+                if (fixedSlots.has(`${cls}_${d2}_${p2}`)) continue;
+                const sessionD2 = grid[cls]?.[d2]?.[p2];
+                if (!sessionD2) continue;
+
+                const T2 = sessionD2.teacher;
+
+                if (!isSlotAllowedForClass(cls, d1, targetP, classRuleMap)) continue;
+                if (!isSlotAllowedForClass(cls, d2, p2, classRuleMap)) continue;
+
+                // T2 phải rảnh ở (d1, targetP)
+                if (isTeacherBusyAt(grid, T2, d1, targetP, teacherBusySet, cls, targetClasses)) continue;
+
+                // T0 phải rảnh ở (d2, p2)
+                if (isTeacherBusyAt(grid, T0, d2, p2, teacherBusySet, cls, targetClasses)) continue;
+
+                let countD1 = 0;
+                for (let p = 0; p < PERIODS.length; p++) {
+                  if (p === srcP) continue;
+                  if (grid[cls][d1][p]?.subject === sessionD2.subject) countD1++;
+                }
+                const maxD1 = (sessionD2.subject === 'Toán' || sessionD2.subject === 'Ngữ văn') ? 2 : 1;
+                if (countD1 >= maxD1) continue;
+
+                let countD2 = 0;
+                for (let p = 0; p < PERIODS.length; p++) {
+                  if (p === p2) continue;
+                  if (grid[cls][d2][p]?.subject === session0.subject) countD2++;
+                }
+                const maxD2 = (session0.subject === 'Toán' || session0.subject === 'Ngữ văn') ? 2 : 1;
+                if (countD2 >= maxD2) continue;
+
+                if (sessionD2.subject === 'GDTC' && targetP === 4) continue;
+                if (session0.subject === 'GDTC' && p2 === 4) continue;
+
+                const backup: Record<string, (ClassSession | null)[]> = {
+                  [`${cls}_${d1}`]: [...grid[cls][d1]],
+                  [`${cls}_${d2}`]: [...grid[cls][d2]]
+                };
+
+                const involvedTeachers = new Set<string>([T0, T2]);
+                for (let p = 0; p < 5; p++) {
+                  const s1 = grid[cls]?.[d1]?.[p];
+                  if (s1) involvedTeachers.add(s1.teacher);
+                  const s2 = grid[cls]?.[d2]?.[p];
+                  if (s2) involvedTeachers.add(s2.teacher);
+                }
+
+                const gapsBefore: Record<string, number> = {};
+                involvedTeachers.forEach(t => {
+                  gapsBefore[t] = calculateTeacherGaps(grid, t, targetClasses);
+                });
+
+                grid[cls][d1][srcP] = null;
+                grid[cls][d1][targetP] = { ...sessionD2, day: d1, period: targetP };
+                grid[cls][d2][p2] = { ...session0, day: d2, period: p2 };
+
+                const remMorningD1: ClassSession[] = [];
+                for (let p = 0; p < 5; p++) {
+                  const sess = grid[cls][d1][p];
+                  if (sess) remMorningD1.push(sess);
+                }
+                for (let p = 0; p < 5; p++) grid[cls][d1][p] = null;
+                remMorningD1.forEach((sess, idx) => {
+                  grid[cls][d1][idx] = { ...sess, day: d1, period: idx };
+                });
+
+                const remMorningD2: ClassSession[] = [];
+                for (let p = 0; p < 5; p++) {
+                  const sess = grid[cls][d2][p];
+                  if (sess) remMorningD2.push(sess);
+                }
+                for (let p = 0; p < 5; p++) grid[cls][d2][p] = null;
+                remMorningD2.forEach((sess, idx) => {
+                  grid[cls][d2][idx] = { ...sess, day: d2, period: idx };
+                });
+
+                let paretoValid = true;
+
+                for (const t of involvedTeachers) {
+                  for (let p = 0; p < 5; p++) {
+                    let c1 = 0;
+                    for (const c of targetClasses) {
+                      if (grid[c]?.[d1]?.[p]?.teacher === t) c1++;
+                    }
+                    if (c1 > 1 || (c1 > 0 && teacherBusySet.has(`${t}_${d1}_${p}`))) {
+                      paretoValid = false;
+                      break;
+                    }
+
+                    let c2 = 0;
+                    for (const c of targetClasses) {
+                      if (grid[c]?.[d2]?.[p]?.teacher === t) c2++;
+                    }
+                    if (c2 > 1 || (c2 > 0 && teacherBusySet.has(`${t}_${d2}_${p}`))) {
+                      paretoValid = false;
+                      break;
+                    }
+                  }
+                  if (!paretoValid) break;
+
+                  const gapsAfter = calculateTeacherGaps(grid, t, targetClasses);
+                  if (gapsAfter > gapsBefore[t]) {
+                    paretoValid = false;
+                    break;
+                  }
+                }
+
+                if (paretoValid) {
+                  if (checkClassHasGaps(grid, cls, d1) || checkClassHasGaps(grid, cls, d2)) {
+                    paretoValid = false;
+                  }
+                }
+
+                if (paretoValid) {
+                  totalCrossDayApplied++;
+                  solved = true;
+                  break;
+                } else {
+                  grid[cls][d1] = backup[`${cls}_${d1}`];
+                  grid[cls][d2] = backup[`${cls}_${d2}`];
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // --- 2. XỬ LÝ CA CHIỀU (Tiết 5..7, mục tiêu: Tiết 1 = slot 5) ---
+      const afternoonSlots: number[] = [];
+      for (let p = 5; p < 8; p++) {
+        if (grid[cls]?.[d1]?.[p]) afternoonSlots.push(p);
+      }
+
+      if (afternoonSlots.length > 0 && afternoonSlots[0] > 5) {
+        const targetP = 5;
+        let solved = false;
+
+        for (let i = afternoonSlots.length - 1; i >= 0 && !solved; i--) {
+          const srcP = afternoonSlots[i];
+          if (fixedSlots.has(`${cls}_${d1}_${srcP}`)) continue;
+
+          const session0 = grid[cls][d1][srcP];
+          if (!session0) continue;
+          const T0 = session0.teacher;
+
+          if (teacherBusySet.has(`${T0}_${d1}_${targetP}`)) continue;
+
+          let blockingClass: string | null = null;
+          for (const other of targetClasses) {
+            if (other === cls) continue;
+            if (grid[other]?.[d1]?.[targetP]?.teacher === T0) {
+              blockingClass = other;
+              break;
+            }
+          }
+
+          if (blockingClass && !fixedSlots.has(`${blockingClass}_${d1}_${targetP}`)) {
+            const sessionBlock = grid[blockingClass][d1][targetP]!;
+
+            for (let d2 = 0; d2 < DAYS.length && !solved; d2++) {
+              if (d2 === d1) continue;
+
+              for (let p2 = 5; p2 < 8 && !solved; p2++) {
+                if (fixedSlots.has(`${blockingClass}_${d2}_${p2}`)) continue;
+                const sessionD2 = grid[blockingClass]?.[d2]?.[p2];
+                if (!sessionD2) continue;
+
+                const T2 = sessionD2.teacher;
+                if (T2 === T0) continue;
+
+                if (!isSlotAllowedForClass(blockingClass, d1, targetP, classRuleMap)) continue;
+                if (!isSlotAllowedForClass(blockingClass, d2, p2, classRuleMap)) continue;
+
+                if (isTeacherBusyAt(grid, T2, d1, targetP, teacherBusySet, blockingClass, targetClasses)) continue;
+                if (isTeacherBusyAt(grid, T0, d2, p2, teacherBusySet, blockingClass, targetClasses)) continue;
+
+                let countD1 = 0;
+                for (let p = 0; p < PERIODS.length; p++) {
+                  if (p === targetP) continue;
+                  if (grid[blockingClass][d1][p]?.subject === sessionD2.subject) countD1++;
+                }
+                const maxD1 = (sessionD2.subject === 'Toán' || sessionD2.subject === 'Ngữ văn') ? 2 : 1;
+                if (countD1 >= maxD1) continue;
+
+                let countD2 = 0;
+                for (let p = 0; p < PERIODS.length; p++) {
+                  if (p === p2) continue;
+                  if (grid[blockingClass][d2][p]?.subject === sessionBlock.subject) countD2++;
+                }
+                const maxD2 = (sessionBlock.subject === 'Toán' || sessionBlock.subject === 'Ngữ văn') ? 2 : 1;
+                if (countD2 >= maxD2) continue;
+
+                if (sessionD2.subject === 'GDTC' && targetP === 7) continue;
+                if (sessionBlock.subject === 'GDTC' && p2 === 7) continue;
+
+                const backup: Record<string, (ClassSession | null)[]> = {
+                  [`${cls}_${d1}`]: [...grid[cls][d1]],
+                  [`${blockingClass}_${d1}`]: [...grid[blockingClass][d1]],
+                  [`${blockingClass}_${d2}`]: [...grid[blockingClass][d2]]
+                };
+
+                const involvedTeachers = new Set<string>([T0, T2]);
+                for (let p = 5; p < 8; p++) {
+                  const s = grid[cls]?.[d1]?.[p];
+                  if (s) involvedTeachers.add(s.teacher);
+                }
+
+                const gapsBefore: Record<string, number> = {};
+                involvedTeachers.forEach(t => {
+                  gapsBefore[t] = calculateTeacherGaps(grid, t, targetClasses);
+                });
+
+                grid[blockingClass][d1][targetP] = { ...sessionD2, day: d1, period: targetP };
+                grid[blockingClass][d2][p2] = { ...sessionBlock, day: d2, period: p2 };
+
+                const movingSess = grid[cls][d1][srcP]!;
+                grid[cls][d1][srcP] = null;
+                grid[cls][d1][targetP] = { ...movingSess, day: d1, period: targetP };
+
+                const remAfternoon: ClassSession[] = [];
+                for (let p = 5; p < 8; p++) {
+                  const sess = grid[cls][d1][p];
+                  if (sess) remAfternoon.push(sess);
+                }
+                for (let p = 5; p < 8; p++) grid[cls][d1][p] = null;
+                remAfternoon.forEach((sess, idx) => {
+                  grid[cls][d1][5 + idx] = { ...sess, day: d1, period: 5 + idx };
+                });
+
+                let paretoValid = true;
+
+                for (const t of involvedTeachers) {
+                  for (let p = 5; p < 8; p++) {
+                    let c1 = 0;
+                    for (const c of targetClasses) {
+                      if (grid[c]?.[d1]?.[p]?.teacher === t) c1++;
+                    }
+                    if (c1 > 1 || (c1 > 0 && teacherBusySet.has(`${t}_${d1}_${p}`))) {
+                      paretoValid = false;
+                      break;
+                    }
+
+                    let c2 = 0;
+                    for (const c of targetClasses) {
+                      if (grid[c]?.[d2]?.[p]?.teacher === t) c2++;
+                    }
+                    if (c2 > 1 || (c2 > 0 && teacherBusySet.has(`${t}_${d2}_${p}`))) {
+                      paretoValid = false;
+                      break;
+                    }
+                  }
+                  if (!paretoValid) break;
+
+                  const gapsAfter = calculateTeacherGaps(grid, t, targetClasses);
+                  if (gapsAfter > gapsBefore[t]) {
+                    paretoValid = false;
+                    break;
+                  }
+                }
+
+                if (paretoValid) {
+                  if (checkClassHasGaps(grid, cls, d1)) paretoValid = false;
+                  if (checkClassHasGaps(grid, blockingClass, d1)) paretoValid = false;
+                  if (checkClassHasGaps(grid, blockingClass, d2)) paretoValid = false;
+                }
+
+                if (paretoValid) {
+                  totalCrossDayApplied++;
+                  solved = true;
+                  break;
+                } else {
+                  grid[cls][d1] = backup[`${cls}_${d1}`];
+                  grid[blockingClass][d1] = backup[`${blockingClass}_${d1}`];
+                  grid[blockingClass][d2] = backup[`${blockingClass}_${d2}`];
+                }
+              }
+            }
+          }
+
+          if (!solved) {
+            for (let d2 = 0; d2 < DAYS.length && !solved; d2++) {
+              if (d2 === d1) continue;
+
+              for (let p2 = 5; p2 < 8 && !solved; p2++) {
+                if (fixedSlots.has(`${cls}_${d2}_${p2}`)) continue;
+                const sessionD2 = grid[cls]?.[d2]?.[p2];
+                if (!sessionD2) continue;
+
+                const T2 = sessionD2.teacher;
+
+                if (!isSlotAllowedForClass(cls, d1, targetP, classRuleMap)) continue;
+                if (!isSlotAllowedForClass(cls, d2, p2, classRuleMap)) continue;
+
+                if (isTeacherBusyAt(grid, T2, d1, targetP, teacherBusySet, cls, targetClasses)) continue;
+                if (isTeacherBusyAt(grid, T0, d2, p2, teacherBusySet, cls, targetClasses)) continue;
+
+                let countD1 = 0;
+                for (let p = 0; p < PERIODS.length; p++) {
+                  if (p === srcP) continue;
+                  if (grid[cls][d1][p]?.subject === sessionD2.subject) countD1++;
+                }
+                const maxD1 = (sessionD2.subject === 'Toán' || sessionD2.subject === 'Ngữ văn') ? 2 : 1;
+                if (countD1 >= maxD1) continue;
+
+                let countD2 = 0;
+                for (let p = 0; p < PERIODS.length; p++) {
+                  if (p === p2) continue;
+                  if (grid[cls][d2][p]?.subject === session0.subject) countD2++;
+                }
+                const maxD2 = (session0.subject === 'Toán' || session0.subject === 'Ngữ văn') ? 2 : 1;
+                if (countD2 >= maxD2) continue;
+
+                if (sessionD2.subject === 'GDTC' && targetP === 7) continue;
+                if (session0.subject === 'GDTC' && p2 === 7) continue;
+
+                const backup: Record<string, (ClassSession | null)[]> = {
+                  [`${cls}_${d1}`]: [...grid[cls][d1]],
+                  [`${cls}_${d2}`]: [...grid[cls][d2]]
+                };
+
+                const involvedTeachers = new Set<string>([T0, T2]);
+                for (let p = 5; p < 8; p++) {
+                  const s1 = grid[cls]?.[d1]?.[p];
+                  if (s1) involvedTeachers.add(s1.teacher);
+                  const s2 = grid[cls]?.[d2]?.[p];
+                  if (s2) involvedTeachers.add(s2.teacher);
+                }
+
+                const gapsBefore: Record<string, number> = {};
+                involvedTeachers.forEach(t => {
+                  gapsBefore[t] = calculateTeacherGaps(grid, t, targetClasses);
+                });
+
+                grid[cls][d1][srcP] = null;
+                grid[cls][d1][targetP] = { ...sessionD2, day: d1, period: targetP };
+                grid[cls][d2][p2] = { ...session0, day: d2, period: p2 };
+
+                const remAfternoonD1: ClassSession[] = [];
+                for (let p = 5; p < 8; p++) {
+                  const sess = grid[cls][d1][p];
+                  if (sess) remAfternoonD1.push(sess);
+                }
+                for (let p = 5; p < 8; p++) grid[cls][d1][p] = null;
+                remAfternoonD1.forEach((sess, idx) => {
+                  grid[cls][d1][5 + idx] = { ...sess, day: d1, period: 5 + idx };
+                });
+
+                const remAfternoonD2: ClassSession[] = [];
+                for (let p = 5; p < 8; p++) {
+                  const sess = grid[cls][d2][p];
+                  if (sess) remAfternoonD2.push(sess);
+                }
+                for (let p = 5; p < 8; p++) grid[cls][d2][p] = null;
+                remAfternoonD2.forEach((sess, idx) => {
+                  grid[cls][d2][5 + idx] = { ...sess, day: d2, period: 5 + idx };
+                });
+
+                let paretoValid = true;
+
+                for (const t of involvedTeachers) {
+                  for (let p = 5; p < 8; p++) {
+                    let c1 = 0;
+                    for (const c of targetClasses) {
+                      if (grid[c]?.[d1]?.[p]?.teacher === t) c1++;
+                    }
+                    if (c1 > 1 || (c1 > 0 && teacherBusySet.has(`${t}_${d1}_${p}`))) {
+                      paretoValid = false;
+                      break;
+                    }
+
+                    let c2 = 0;
+                    for (const c of targetClasses) {
+                      if (grid[c]?.[d2]?.[p]?.teacher === t) c2++;
+                    }
+                    if (c2 > 1 || (c2 > 0 && teacherBusySet.has(`${t}_${d2}_${p}`))) {
+                      paretoValid = false;
+                      break;
+                    }
+                  }
+                  if (!paretoValid) break;
+
+                  const gapsAfter = calculateTeacherGaps(grid, t, targetClasses);
+                  if (gapsAfter > gapsBefore[t]) {
+                    paretoValid = false;
+                    break;
+                  }
+                }
+
+                if (paretoValid) {
+                  if (checkClassHasGaps(grid, cls, d1) || checkClassHasGaps(grid, cls, d2)) {
+                    paretoValid = false;
+                  }
+                }
+
+                if (paretoValid) {
+                  totalCrossDayApplied++;
+                  solved = true;
+                  break;
+                } else {
+                  grid[cls][d1] = backup[`${cls}_${d1}`];
+                  grid[cls][d2] = backup[`${cls}_${d2}`];
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return totalCrossDayApplied;
+}
+
+/**
  * Bộ dồn tiết và vá lỗ hổng (Gap Compaction & Healer Engine):
  * Đảm bảo mọi ca học của lớp luôn bắt đầu từ Tiết 1 (slot 0 sáng hoặc slot 5 chiều)
  * và không có bất kỳ tiết lủng nào ở giữa.
- * Kết hợp hoán vị đơn lớp và Mạng lưới hoán đổi đa lớp Teacher Pairing Swapping Network.
+ * Kết hợp hoán vị đơn lớp, Mạng lưới ghép cặp trong ngày, và Tùy chọn hoán đổi liên ngày khi kẹt cứng.
  */
 function compactAndHealClassGaps(
   grid: TimetableGrid,
   teacherBusySet: Set<string>,
   fixedSlots: Set<string>,
   classRuleMap?: Map<string, ClassShiftRule>,
-  targetClasses?: string[]
+  targetClasses?: string[],
+  allowCrossDaySwapping = false
 ): void {
   const classesToRun = targetClasses && targetClasses.length > 0
     ? targetClasses
@@ -1053,11 +1653,15 @@ function compactAndHealClassGaps(
     }
   }
 
-  // VÒNG 2: Mạng lưới hoán đổi ghép cặp giáo viên thông minh đa lớp (Teacher Pairing Swapping Network)
-  // Xử lý các lớp quy mô lớn (> 40 lớp) bị kẹt tiết 1 mà hoán vị nội bộ đơn lớp không dồn được
+  // VÒNG 2: Mạng lưới hoán đổi ghép cặp giáo viên thông minh đa lớp trong ngày (Intra-day Teacher Pairing Swapping Network)
   applyTeacherPairingSwappingNetwork(grid, classesToRun, teacherBusySet, fixedSlots, 5);
 
-  // VÒNG 3: Dồn bổ sung cho các lớp nếu các vị trí mới đã được giải phóng
+  // VÒNG 3: Hoán đổi liên ngày khi kẹt cứng (Cross-day Teacher Swapping Network)
+  if (allowCrossDaySwapping) {
+    applyCrossDaySwappingNetwork(grid, classesToRun, teacherBusySet, fixedSlots, classRuleMap);
+  }
+
+  // VÒNG 4: Dồn bổ sung cho các lớp nếu các vị trí mới đã được giải phóng
   for (const cls of classesToRun) {
     for (let d = 0; d < DAYS.length; d++) {
       const morningSlots: number[] = [];
@@ -1336,7 +1940,7 @@ function resolveUnassignedWithEjectionChain(
 /**
  * GIAI ĐOẠN 1: Tạo bảng Thời khóa biểu ban đầu với MRV + Ejection Chain
  */
-function generateInitialGrid(data: InputRow[], constraints: Constraint[] = []) {
+function generateInitialGrid(data: InputRow[], constraints: Constraint[] = [], allowCrossDaySwapping = false) {
   let bestGrid: TimetableGrid = {};
   let minUnplaced = Infinity;
   let bestUnassigned: InputRow[] = [];
@@ -1539,7 +2143,7 @@ function generateInitialGrid(data: InputRow[], constraints: Constraint[] = []) {
     }
   }
 
-  compactAndHealClassGaps(bestGrid, teacherBusySet, fixedSlots, classRuleMap, targetClasses);
+  compactAndHealClassGaps(bestGrid, teacherBusySet, fixedSlots, classRuleMap, targetClasses, allowCrossDaySwapping);
 
   return { grid: bestGrid, unassigned: bestUnassigned, unplacedCount: minUnplaced, classRuleMap };
 }
@@ -1552,7 +2156,8 @@ function optimizeWithSimulatedAnnealing(
   constraints: Constraint[] = [],
   maxIterations = 5000,
   classRuleMap?: Map<string, ClassShiftRule>,
-  targetClasses?: string[]
+  targetClasses?: string[],
+  allowCrossDaySwapping = false
 ): TimetableGrid {
   const classesList = targetClasses && targetClasses.length > 0
     ? targetClasses
@@ -1681,7 +2286,7 @@ function optimizeWithSimulatedAnnealing(
     temperature *= coolingRate;
   }
 
-  compactAndHealClassGaps(bestGrid, teacherBusySet, fixedSlots, classRuleMap, classesList);
+  compactAndHealClassGaps(bestGrid, teacherBusySet, fixedSlots, classRuleMap, classesList, allowCrossDaySwapping);
 
   return bestGrid;
 }
@@ -1690,14 +2295,19 @@ function optimizeWithSimulatedAnnealing(
  * Thuật toán xếp Thời khóa biểu Tối ưu hóa Toàn diện (Chính thức):
  * Kết hợp Heuristic Monte Carlo + Luyện kim nhân tạo Simulated Annealing
  */
-export const generateSchedule = (data: InputRow[], constraints: Constraint[] = []): ScheduleResult => {
+export const generateSchedule = (
+  data: InputRow[],
+  constraints: Constraint[] = [],
+  options?: GenerateScheduleOptions
+): ScheduleResult => {
   const startTime = Date.now();
+  const allowCrossDaySwapping = options?.allowCrossDaySwapping ?? false;
 
   const dynamicClasses = Array.from(new Set(data.map(r => r.className))).filter(Boolean);
   const targetClasses = dynamicClasses.length > 0 ? dynamicClasses : CLASSES;
 
   // Bước 1: Khởi tạo lưới thời khóa biểu hợp lệ ban đầu
-  const initial = generateInitialGrid(data, constraints);
+  const initial = generateInitialGrid(data, constraints, allowCrossDaySwapping);
 
   // Nếu còn tiết chưa thể xếp do ràng buộc quá chặt
   if (initial.unplacedCount > 0) {
@@ -1712,7 +2322,7 @@ export const generateSchedule = (data: InputRow[], constraints: Constraint[] = [
   const initialMetrics = evaluateScheduleQuality(initial.grid, allTeachers, targetClasses);
 
   // Bước 2: Tối ưu hóa sâu bằng Simulated Annealing (triệt tiêu tiết trống, ghép tiết đôi, cân đối sư phạm)
-  const optimizedGrid = optimizeWithSimulatedAnnealing(initial.grid, constraints, 5000, initial.classRuleMap, targetClasses);
+  const optimizedGrid = optimizeWithSimulatedAnnealing(initial.grid, constraints, 5000, initial.classRuleMap, targetClasses, allowCrossDaySwapping);
   const finalMetrics = evaluateScheduleQuality(optimizedGrid, allTeachers, targetClasses);
   const timeMs = Date.now() - startTime;
 

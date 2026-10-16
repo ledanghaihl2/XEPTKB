@@ -1,5 +1,7 @@
 import { InputRow, ShiftType } from './types';
 
+export const STORAGE_KEY_ALLOW_CROSS_DAY_SWAP = 'smart_scheduler_allow_cross_day_swap';
+
 export const DAYS = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6'];
 export const PERIODS = [
   'Sáng 1', 'Sáng 2', 'Sáng 3', 'Sáng 4', 'Sáng 5',

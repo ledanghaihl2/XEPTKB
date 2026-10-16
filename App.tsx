@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { InputRow, TimetableGrid, ScheduleResult, Constraint, TimetableVersion, ShiftType } from './types';
-import { SAMPLE_DATA, SHIFT_OPTIONS } from './constants';
+import { SAMPLE_DATA, SHIFT_OPTIONS, STORAGE_KEY_ALLOW_CROSS_DAY_SWAP } from './constants';
 import { generateSchedule } from './services/schedulerEngine';
 import { exportScheduleToExcel } from './services/excelExporter';
 import { parseExcelData } from './services/excelImporter';
@@ -113,6 +113,42 @@ function App() {
     optimizationTimeMs: number;
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // State quản lý Bật/Tắt Hoán đổi liên ngày khi kẹt cứng (Cross-day Teacher Swapping)
+  const [allowCrossDaySwapping, setAllowCrossDaySwapping] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_ALLOW_CROSS_DAY_SWAP);
+      if (saved !== null) {
+        return saved === 'true';
+      }
+    } catch {
+      // ignore
+    }
+    return true; // Khuyến nghị mặc định BẬT
+  });
+
+  const handleToggleCrossDaySwapping = (val?: boolean) => {
+    setAllowCrossDaySwapping(prev => {
+      const nextVal = typeof val === 'boolean' ? val : !prev;
+      try {
+        localStorage.setItem(STORAGE_KEY_ALLOW_CROSS_DAY_SWAP, String(nextVal));
+      } catch {
+        // ignore
+      }
+      return nextVal;
+    });
+  };
+
+  useEffect(() => {
+    const handleCrossDayEvent = (e: Event) => {
+      const custom = e as CustomEvent<{ value: boolean }>;
+      if (custom.detail && typeof custom.detail.value === 'boolean') {
+        setAllowCrossDaySwapping(custom.detail.value);
+      }
+    };
+    window.addEventListener('smart_scheduler_cross_day_swap_changed', handleCrossDayEvent);
+    return () => window.removeEventListener('smart_scheduler_cross_day_swap_changed', handleCrossDayEvent);
+  }, []);
 
   const handleApplyParsedData = (newAssignments: InputRow[], newConstraints: Constraint[]) => {
     let updatedData = [...data];
@@ -261,7 +297,7 @@ function App() {
     setIsGenerating(true);
     // Timeout to allow UI to render loading state
     setTimeout(() => {
-      const result: ScheduleResult = generateSchedule(currentData, constraints);
+      const result: ScheduleResult = generateSchedule(currentData, constraints, { allowCrossDaySwapping });
       setSchedule(result.timetable);
       setUnassigned(result.unassigned);
       if (result.metrics) {
@@ -470,6 +506,20 @@ function App() {
                   {versions.length}
                 </span>
               )}
+            </button>
+
+            <button 
+              type="button"
+              onClick={() => handleToggleCrossDaySwapping()}
+              className={`hidden md:inline-flex items-center gap-1.5 px-3 py-2 rounded shadow transition-colors text-sm font-medium border cursor-pointer ${
+                allowCrossDaySwapping 
+                  ? 'bg-teal-700 hover:bg-teal-800 text-teal-100 border-teal-500/50' 
+                  : 'bg-slate-700 hover:bg-slate-800 text-slate-300 border-slate-600'
+              }`}
+              title="Cơ chế hoán đổi giáo viên liên ngày khi kẹt cứng Tiết 1: BẬT / TẮT (Click để chuyển đổi)"
+            >
+              <span>🔄</span>
+              <span>Hoán đổi liên ngày: {allowCrossDaySwapping ? 'BẬT' : 'TẮT'}</span>
             </button>
 
              <button 
@@ -804,6 +854,8 @@ function App() {
               classes={uniqueClasses}
               subjects={uniqueSubjects}
               data={data}
+              allowCrossDaySwapping={allowCrossDaySwapping}
+              onToggleCrossDaySwapping={handleToggleCrossDaySwapping}
             />
           )}
         </div>
