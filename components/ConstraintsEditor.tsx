@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Constraint, ConstraintType, ShiftType, InputRow } from '../types';
 import { DAYS, PERIODS, calcShiftCapacity } from '../constants';
 import SchoolShiftMatrix from './SchoolShiftMatrix';
+import { isSubjectMatching } from '../services/schedulerEngine';
 
 interface Props {
   constraints: Constraint[];
@@ -31,17 +32,46 @@ const ConstraintsEditor: React.FC<Props> = ({
   const [activeView, setActiveView] = useState<'matrix' | 'form_list'>('matrix');
   const [type, setType] = useState<ConstraintType>('CLASS_SHIFT');
   const [selectedTeacher, setSelectedTeacher] = useState(teachers[0] || '');
-  const [selectedClass, setSelectedClass] = useState(classes[0] || '');
-  const [selectedSubject, setSelectedSubject] = useState(subjects[0] || '');
+  const [selectedClass, setSelectedClass] = useState('ALL');
+  const [selectedSubject, setSelectedSubject] = useState(subjects[0] || 'HĐTN');
   const [selectedDay, setSelectedDay] = useState(0);
   const [selectedPeriod, setSelectedPeriod] = useState(0);
   const [busyScope, setBusyScope] = useState<'PERIOD' | 'MORNING' | 'AFTERNOON'>('PERIOD');
   const [isManualTeacher, setIsManualTeacher] = useState(false);
+  const [isManualSubject, setIsManualSubject] = useState(false);
 
   // Cấu hình thứ học theo từng ca trong tuần: 0=Thứ 2, 1=Thứ 3, ..., 4=Thứ 6
   const [morningDays, setMorningDays] = useState<number[]>([0, 1, 2, 3, 4]);
   const [afternoonDays, setAfternoonDays] = useState<number[]>([0, 1, 2, 3, 4]);
   const [applyScope, setApplyScope] = useState<string>('SINGLE');
+
+  // Danh sách các khối lớp độc lập (Khối 6, 7, 8, 9...)
+  const distinctGrades = useMemo(() => {
+    const set = new Set<string>();
+    classes.forEach(c => {
+      const match = c.match(/^(\d+)/);
+      if (match) set.add(match[1]);
+    });
+    return Array.from(set).sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
+  }, [classes]);
+
+  // Danh sách môn học gợi ý cho Tiết cố định (luôn ưu tiên HĐTN, Chào cờ, Sinh hoạt lớp)
+  const availableFixedSubjects = useMemo(() => {
+    const list = [...subjects];
+    const popular = ['HĐTN', 'Chào cờ', 'Sinh hoạt lớp'];
+    popular.forEach(p => {
+      if (!list.some(s => isSubjectMatching(s, p))) {
+        list.unshift(p);
+      }
+    });
+    return Array.from(new Set(list));
+  }, [subjects]);
+
+  // Thông tin ca học Thứ 6 để tính đúng Tiết cuối (Tiết 4 nếu có học chiều, Tiết 5 nếu chỉ học sáng)
+  const schoolShift = useMemo(() => constraints.find(c => c.type === 'SCHOOL_SHIFT'), [constraints]);
+  const hasAfternoonFriday = useMemo(() => schoolShift?.afternoonDays?.includes(4) ?? false, [schoolShift]);
+  const fridayPeriod = hasAfternoonFriday ? 3 : 4;
+  const fridayPeriodLabel = hasAfternoonFriday ? 'Tiết 4 Thứ 6 (Học chiều)' : 'Tiết 5 Thứ 6 (Sáng)';
 
   // Xử lý cập nhật ca học nhanh từ Ma trận ca học toàn trường (Cập nhật nguyên tử 100%)
   const handleUpdateClassShift = (cls: string, mDays: number[], aDays: number[]) => {
@@ -240,9 +270,56 @@ const ConstraintsEditor: React.FC<Props> = ({
     );
   };
 
+  // Áp dụng nhanh tiết cố định toàn trường theo mẫu chuẩn Bộ GD&ĐT (Chào cờ T1 Thứ 2 / Sinh hoạt lớp T6)
+  const handleApplyQuickFixedPresets = (presetType: 'CHAO_CO' | 'SINH_HOAT_LOP' | 'BOTH') => {
+    const hdtnSubj = subjects.find(s => isSubjectMatching(s, 'HĐTN')) || 'HĐTN';
+    const newItems: Constraint[] = [];
+
+    if (presetType === 'CHAO_CO' || presetType === 'BOTH') {
+      newItems.push({
+        id: 'fix_t2_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+        type: 'FIXED_SESSION',
+        className: 'ALL',
+        subject: hdtnSubj,
+        day: 0,
+        period: 0
+      });
+    }
+
+    if (presetType === 'SINH_HOAT_LOP' || presetType === 'BOTH') {
+      newItems.push({
+        id: 'fix_t6_' + (Date.now() + 1) + '_' + Math.random().toString(36).substr(2, 4),
+        type: 'FIXED_SESSION',
+        className: 'ALL',
+        subject: hdtnSubj,
+        day: 4,
+        period: fridayPeriod
+      });
+    }
+
+    if (onUpdateConstraints) {
+      onUpdateConstraints(prev => {
+        const filtered = prev.filter(c => {
+          if (c.type !== 'FIXED_SESSION') return true;
+          if (c.className === 'ALL' || !c.className || c.className === 'ALL_CLASSES' || c.className === 'TOAN_TRUONG') {
+            if ((presetType === 'CHAO_CO' || presetType === 'BOTH') && c.day === 0 && c.period === 0) return false;
+            if ((presetType === 'SINH_HOAT_LOP' || presetType === 'BOTH') && c.day === 4 && (c.period === 4 || c.period === 3)) return false;
+          }
+          return true;
+        });
+        return [...filtered, ...newItems];
+      });
+    } else {
+      newItems.forEach(item => onAdd(item));
+    }
+  };
+
   const handleAdd = () => {
     if ((type === 'TEACHER_BUSY' || type === 'TEACHER_SHIFT') && !selectedTeacher) return;
-    if (type === 'FIXED_SESSION' && (!selectedClass || !selectedSubject)) return;
+    if (type === 'FIXED_SESSION' && (!selectedClass || !selectedSubject)) {
+      alert('Vui lòng chọn lớp (hoặc Toàn trường) và nhập môn học cần cố định!');
+      return;
+    }
     if (type === 'CLASS_SHIFT' && !selectedClass) return;
 
     if (type === 'SCHOOL_SHIFT') {
@@ -329,10 +406,11 @@ const ConstraintsEditor: React.FC<Props> = ({
     }
 
     if (type === 'FIXED_SESSION') {
+      const subj = selectedSubject.trim();
       onAdd({
         type: 'FIXED_SESSION',
         className: selectedClass,
-        subject: selectedSubject,
+        subject: subj,
         day: selectedDay,
         period: selectedPeriod,
       });
@@ -386,6 +464,18 @@ const ConstraintsEditor: React.FC<Props> = ({
       }
       const timeStr = `${DAYS[c.day ?? 0]}, Tiết ${PERIODS[c.period ?? 0] || ((c.period ?? 0) + 1)}`;
       return `Giáo viên ${c.teacher} bận vào ${timeStr}`;
+    }
+    if (c.type === 'FIXED_SESSION') {
+      const timeStr = `${DAYS[c.day ?? 0]}, Tiết ${PERIODS[c.period ?? 0] || ((c.period ?? 0) + 1)}`;
+      let scopeStr = `Lớp ${c.className}`;
+      if (!c.className || c.className === 'ALL' || c.className === 'ALL_CLASSES' || c.className === 'TOAN_TRUONG') {
+        scopeStr = `🏫 TOÀN TRƯỜNG (${classes.length} lớp)`;
+      } else if (c.className.startsWith('KHOI_') || c.className.startsWith('GRADE_')) {
+        const gradeNum = c.className.replace(/^(KHOI_|GRADE_)/, '');
+        const gradeClasses = classes.filter(cls => cls.startsWith(gradeNum));
+        scopeStr = `🏢 TOÀN BỘ KHỐI ${gradeNum} (${gradeClasses.length} lớp)`;
+      }
+      return `${scopeStr}: Cố định môn [${c.subject}] vào ${timeStr}`;
     }
     const timeStr = `${DAYS[c.day ?? 0]}, Tiết ${PERIODS[c.period ?? 0] || ((c.period ?? 0) + 1)}`;
     return `Lớp ${c.className} phải học ${c.subject} vào ${timeStr}`;
@@ -495,8 +585,78 @@ const ConstraintsEditor: React.FC<Props> = ({
             </div>
           )}
 
-          {/* Chọn Lớp (cho CLASS_SHIFT hoặc FIXED_SESSION) */}
-          {(type === 'FIXED_SESSION' || type === 'CLASS_SHIFT') && (
+          {/* Thanh áp dụng nhanh Tiết cố định Toàn trường (Mẫu Chuẩn Bộ GD&ĐT) */}
+          {type === 'FIXED_SESSION' && (
+            <div className="col-span-1 md:col-span-2 lg:col-span-3 bg-gradient-to-r from-teal-50/90 via-emerald-50/70 to-teal-50/90 border border-teal-200 rounded-xl p-4 shadow-2xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">⚡</span>
+                  <span className="text-xs font-bold uppercase tracking-wider text-teal-950">
+                    Áp dụng nhanh Tiết cố định Toàn trường (Mẫu Chuẩn Bộ GD&ĐT)
+                  </span>
+                </div>
+                <span className="text-[11px] text-teal-800 font-bold bg-teal-100/80 px-2.5 py-0.5 rounded-full border border-teal-200">
+                  Khóa cứng slot cho cả {classes.length} lớp
+                </span>
+              </div>
+              <p className="text-xs text-teal-900 mb-3">
+                Nhấn 1 chạm để tự động gán và khóa cố định môn HĐTN / Chào cờ / Sinh hoạt lớp cho toàn bộ các lớp trong trường:
+              </p>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => handleApplyQuickFixedPresets('CHAO_CO')}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-teal-50 text-teal-900 border border-teal-300 rounded-lg text-xs font-bold shadow-2xs transition-all active:scale-95"
+                >
+                  <span>🇻🇳</span>
+                  <span>Tiết 1 Thứ 2: Chào cờ / HĐTN</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleApplyQuickFixedPresets('SINH_HOAT_LOP')}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-teal-50 text-teal-900 border border-teal-300 rounded-lg text-xs font-bold shadow-2xs transition-all active:scale-95"
+                >
+                  <span>👥</span>
+                  <span>{fridayPeriodLabel}: Sinh hoạt lớp / HĐTN</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleApplyQuickFixedPresets('BOTH')}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-lg text-xs font-bold shadow-xs transition-all active:scale-95"
+                >
+                  <span>🌟</span>
+                  <span>Áp dụng cả 2 tiết mẫu (T1 T2 & {fridayPeriodLabel})</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Chọn Lớp cho FIXED_SESSION (Hỗ trợ Toàn trường, Khối, Lớp lẻ) */}
+          {type === 'FIXED_SESSION' && (
+            <div>
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1.5">
+                Phạm vi áp dụng
+              </label>
+              <select 
+                value={selectedClass}
+                onChange={e => setSelectedClass(e.target.value)}
+                className="w-full p-2.5 border border-teal-300 rounded-lg shadow-sm font-bold text-sm bg-white text-teal-950 focus:border-primary focus:ring-1 focus:ring-primary"
+              >
+                <optgroup label="🏫 Phạm vi rộng (Toàn trường / Khối)">
+                  <option value="ALL">🏫 TOÀN TRƯỜNG (Tất cả {classes.length} lớp)</option>
+                  {distinctGrades.map(g => (
+                    <option key={g} value={`KHOI_${g}`}>🏢 Toàn bộ Khối {g} ({classes.filter(c => c.startsWith(g)).length} lớp)</option>
+                  ))}
+                </optgroup>
+                <optgroup label="📖 Từng lớp học cụ thể">
+                  {classes.map(c => <option key={c} value={c}>Lớp {c}</option>)}
+                </optgroup>
+              </select>
+            </div>
+          )}
+
+          {/* Chọn Lớp cho CLASS_SHIFT */}
+          {type === 'CLASS_SHIFT' && (
             <div>
               <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1.5">Chọn Lớp học</label>
               <select 
@@ -545,14 +705,50 @@ const ConstraintsEditor: React.FC<Props> = ({
           {/* Chọn Môn học (cho FIXED_SESSION) */}
           {type === 'FIXED_SESSION' && (
             <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1.5">Môn học</label>
-              <select 
-                value={selectedSubject}
-                onChange={e => setSelectedSubject(e.target.value)}
-                className="w-full p-2.5 border border-gray-300 rounded-lg shadow-sm font-medium text-sm bg-white"
-              >
-                {subjects.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
+              <div className="flex justify-between items-center mb-1.5">
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide">Môn học</label>
+                <button 
+                  type="button"
+                  onClick={() => setIsManualSubject(!isManualSubject)}
+                  className="text-xs text-primary hover:text-teal-800 underline focus:outline-none"
+                >
+                  {isManualSubject ? 'Chọn danh sách' : 'Nhập tay'}
+                </button>
+              </div>
+              {isManualSubject ? (
+                <input
+                  type="text"
+                  value={selectedSubject}
+                  onChange={e => setSelectedSubject(e.target.value)}
+                  placeholder="Ví dụ: HĐTN, Chào cờ, Sinh hoạt lớp..."
+                  className="w-full p-2.5 border border-gray-300 rounded-lg shadow-sm focus:border-primary focus:ring-1 focus:ring-primary text-sm bg-white font-medium"
+                />
+              ) : (
+                <select 
+                  value={selectedSubject}
+                  onChange={e => setSelectedSubject(e.target.value)}
+                  className="w-full p-2.5 border border-gray-300 rounded-lg shadow-sm font-medium text-sm bg-white"
+                >
+                  {availableFixedSubjects.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              )}
+              {/* Nút bấm chọn nhanh môn học cố định */}
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {['HĐTN', 'Chào cờ', 'Sinh hoạt lớp'].map(s => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setSelectedSubject(s)}
+                    className={`text-[11px] px-2 py-0.5 rounded border transition-colors ${
+                      selectedSubject === s 
+                        ? 'bg-teal-700 text-white border-teal-800 font-bold' 
+                        : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-200'
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
@@ -889,6 +1085,18 @@ const ConstraintsEditor: React.FC<Props> = ({
             if (c.type === 'SCHOOL_SHIFT') {
               badgeBg = 'bg-teal-700 text-white border-teal-800 shadow-xs font-black';
               badgeLabel = '🏫 Toàn trường';
+            } else if (c.type === 'FIXED_SESSION') {
+              if (!c.className || c.className === 'ALL' || c.className === 'ALL_CLASSES' || c.className === 'TOAN_TRUONG') {
+                badgeBg = 'bg-emerald-700 text-white border-emerald-800 shadow-xs font-black';
+                badgeLabel = '🏫 Cố định Toàn trường';
+              } else if (c.className.startsWith('KHOI_') || c.className.startsWith('GRADE_')) {
+                const gradeNum = c.className.replace(/^(KHOI_|GRADE_)/, '');
+                badgeBg = 'bg-teal-700 text-white border-teal-800 shadow-xs font-black';
+                badgeLabel = `🏢 Cố định Khối ${gradeNum}`;
+              } else {
+                badgeBg = 'bg-blue-100 text-blue-800 border-blue-200';
+                badgeLabel = `📌 Cố định Lớp ${c.className}`;
+              }
             } else if (c.type === 'TEACHER_BUSY') {
               badgeBg = 'bg-red-100 text-red-800 border-red-200';
               badgeLabel = 'GV Bận';

@@ -113,6 +113,8 @@ export function countGlobalTeacherCollisions(
         const session = grid[cls]?.[d]?.[p];
         if (session && session.teacher && session.teacher !== 'Chưa phân công') {
           const t = session.teacher.trim();
+          const isGeneral = /^(bgh|ban giám hiệu|tpt|tổng phụ trách|toàn trường)$/i.test(t);
+          if (isGeneral) continue; // Chức danh chung toàn trường (BGH, TPT) không tính là trùng tiết
           if (!teacherMap.has(t)) {
             teacherMap.set(t, []);
           }
@@ -307,7 +309,12 @@ function calculatePenalty(
  * - Sáng (0..4): Nếu có học sáng, bắt buộc phải bắt đầu từ Tiết 1 sáng (p = 0) và học liên tục (0, 1, ..., N-1).
  * - Chiều (5..7): Nếu có học chiều, bắt buộc phải bắt đầu từ Tiết 1 chiều (p = 5) và học liên tục (5, 6, ..., 5+M-1).
  */
-function checkClassHasGaps(grid: TimetableGrid, className: string, day: number): boolean {
+function checkClassHasGaps(
+  grid: TimetableGrid,
+  className: string,
+  day: number,
+  fixedSlots?: Set<string>
+): boolean {
   const mSlots: number[] = [];
   const aSlots: number[] = [];
   for (let p = 0; p < PERIODS.length; p++) {
@@ -319,14 +326,27 @@ function checkClassHasGaps(grid: TimetableGrid, className: string, day: number):
 
   // Buổi sáng: nếu có tiết thì bắt buộc phải bắt đầu từ tiết 0 và liên tục không có lỗ hổng
   if (mSlots.length > 0) {
-    if (mSlots[0] !== 0) return true;
-    if (mSlots[mSlots.length - 1] !== mSlots.length - 1) return true;
+    // Nếu có ô cố định ở cuối buổi (ví dụ Tiết 5 slot 4) nhưng các ô trước đang trong quá trình điền
+    const activeSlots = fixedSlots 
+      ? mSlots.filter(p => !(fixedSlots.has(`${className}_${day}_${p}`) && p > mSlots.length - 1))
+      : mSlots;
+
+    if (activeSlots.length > 0) {
+      if (activeSlots[0] !== 0) return true;
+      if (activeSlots[activeSlots.length - 1] !== activeSlots.length - 1) return true;
+    }
   }
 
   // Buổi chiều: nếu có tiết thì bắt buộc phải bắt đầu từ tiết 5 và liên tục không có lỗ hổng
   if (aSlots.length > 0) {
-    if (aSlots[0] !== 5) return true;
-    if (aSlots[aSlots.length - 1] !== 5 + aSlots.length - 1) return true;
+    const activeSlots = fixedSlots 
+      ? aSlots.filter(p => !(fixedSlots.has(`${className}_${day}_${p}`) && (p - 5) > aSlots.length - 1))
+      : aSlots;
+
+    if (activeSlots.length > 0) {
+      if (activeSlots[0] !== 5) return true;
+      if (activeSlots[activeSlots.length - 1] !== 5 + activeSlots.length - 1) return true;
+    }
   }
 
   return false;
@@ -458,6 +478,83 @@ export function buildTeacherBusySet(constraints: Constraint[]): Set<string> {
 }
 
 /**
+ * So sánh tên môn học hỗ trợ viết tắt và tên tương đương:
+ * HĐTN <-> Hoạt động trải nghiệm <-> HĐTN, HN
+ * Chào cờ <-> SHDC <-> Sinh hoạt dưới cờ
+ * Sinh hoạt lớp <-> SHL <-> Sinh hoạt
+ */
+export function isSubjectMatching(sub1: string, sub2: string): boolean {
+  if (!sub1 || !sub2) return false;
+  const s1 = sub1.trim().toLowerCase();
+  const s2 = sub2.trim().toLowerCase();
+  if (s1 === s2) return true;
+
+  const clean = (s: string) => s.replace(/[\s\-_,\.]+/g, '').toLowerCase();
+  const c1 = clean(s1);
+  const c2 = clean(s2);
+  if (c1 === c2) return true;
+
+  const hdtnGroup = ['hdtn', 'hdtn-hn', 'hdtn,hn', 'hdtn, hn', 'hoatdongtrainghiem', 'hoatdongtrainghiemhuongnghiep', 'hđtn', 'hđtn-hn', 'hđtn, hn', 'hđtn,hn'];
+  const isHdtn1 = hdtnGroup.some(g => c1.includes(clean(g)) || clean(g).includes(c1));
+  const isHdtn2 = hdtnGroup.some(g => c2.includes(clean(g)) || clean(g).includes(c2));
+  if (isHdtn1 && isHdtn2) return true;
+
+  const chaoCoGroup = ['chaoco', 'shdc', 'sinhhoatduoico'];
+  const isCC1 = chaoCoGroup.some(g => c1.includes(clean(g)) || clean(g).includes(c1));
+  const isCC2 = chaoCoGroup.some(g => c2.includes(clean(g)) || clean(g).includes(c2));
+  if (isCC1 && isCC2) return true;
+
+  const shlGroup = ['sinhhoatlop', 'sinhhoat', 'shl'];
+  const isShl1 = shlGroup.some(g => c1.includes(clean(g)) || clean(g).includes(c1));
+  const isShl2 = shlGroup.some(g => c2.includes(clean(g)) || clean(g).includes(c2));
+  if (isShl1 && isShl2) return true;
+
+  return false;
+}
+
+/**
+ * Xác định danh sách các lớp học áp dụng cho một ràng buộc
+ * Hỗ trợ 'ALL' (toàn trường), 'KHOI_6' / 'GRADE_6' (theo khối), hoặc từng lớp lẻ
+ */
+export function getTargetClassesForConstraint(className: string | undefined, allClasses: string[]): string[] {
+  if (!className || className === 'ALL' || className === 'ALL_CLASSES' || className === 'TOAN_TRUONG') {
+    return allClasses;
+  }
+  if (className.startsWith('KHOI_') || className.startsWith('GRADE_')) {
+    const gradeNum = className.replace(/^(KHOI_|GRADE_)/, '');
+    const matched = allClasses.filter(c => c.startsWith(gradeNum) || c.startsWith(`Lớp ${gradeNum}`) || c.match(new RegExp('^' + gradeNum + '[^0-9]')) || c === gradeNum);
+    return matched.length > 0 ? matched : allClasses;
+  }
+  return allClasses.includes(className) ? [className] : [className];
+}
+
+/**
+ * Xây dựng tập hợp fixedSlots (các ô d_p cố định không được di dời hay hoán đổi)
+ * Hỗ trợ cả lớp đơn lẻ, theo khối và TOÀN TRƯỜNG ('ALL')
+ * Tự động đồng bộ với quy tắc sáng 4 tiết nếu ngày đó có học chiều
+ */
+export function buildFixedSlotsSet(
+  constraints: Constraint[],
+  allClasses: string[],
+  classRuleMap?: Map<string, ClassShiftRule>
+): Set<string> {
+  const fixedSlots = new Set<string>();
+  constraints.forEach(c => {
+    if (c.type === 'FIXED_SESSION' && c.day !== undefined && c.period !== undefined) {
+      const targetClsList = getTargetClassesForConstraint(c.className, allClasses);
+      targetClsList.forEach(cls => {
+        let p = c.period!;
+        if (classRuleMap && !isSlotAllowedForClass(cls, c.day!, p, classRuleMap) && isSlotAllowedForClass(cls, c.day!, p - 1, classRuleMap)) {
+          p = p - 1;
+        }
+        fixedSlots.add(`${cls}_${c.day!}_${p}`);
+      });
+    }
+  });
+  return fixedSlots;
+}
+
+/**
  * Xây dựng bản đồ quy tắc ca/thứ học cho từng lớp từ danh sách ràng buộc
  */
 export function buildClassRuleMap(constraints: Constraint[], classes?: string[]): Map<string, ClassShiftRule> {
@@ -567,13 +664,14 @@ function findValidPermutation(
       // 2. Ràng buộc ca học của lớp
       if (!isSlotAllowedForClass(cls, d, targetP, classRuleMap)) { valid = false; break; }
 
-      // 3. Ô cố định của môn khác
-      if (fixedSlots.has(`${cls}_${d}_${targetP}`)) {
-        const currentSlotItem = grid[cls]?.[d]?.[targetP];
-        if (!currentSlotItem || currentSlotItem.subject !== s.subject) {
-          valid = false;
-          break;
-        }
+      // 3. Quy tắc ô cố định: Không dời tiết cố định đi nơi khác và không đưa môn khác vào ô cố định
+      if (fixedSlots.has(`${cls}_${d}_${s.period}`) && targetP !== s.period) {
+        valid = false;
+        break;
+      }
+      if (fixedSlots.has(`${cls}_${d}_${targetP}`) && s.period !== targetP) {
+        valid = false;
+        break;
       }
 
       // 4. GDTC không học tiết 4 sáng hoặc tiết 3 chiều
@@ -2175,17 +2273,11 @@ function generateInitialGrid(data: InputRow[], constraints: Constraint[] = [], a
   let minUnplaced = Infinity;
   let bestUnassigned: InputRow[] = [];
 
-  const fixedSlots = new Set<string>();
-  constraints.forEach(c => {
-    if (c.type === 'FIXED_SESSION' && c.className && c.day !== undefined && c.period !== undefined) {
-      fixedSlots.add(`${c.className}_${c.day}_${c.period}`);
-    }
-  });
-
   const dynamicClasses = Array.from(new Set(data.map(r => r.className))).filter(Boolean);
   const targetClasses = dynamicClasses.length > 0 ? dynamicClasses : CLASSES;
   const teacherBusySet = buildTeacherBusySet(constraints);
   const classRuleMap = buildClassRuleMap(constraints, targetClasses);
+  const fixedSlots = buildFixedSlotsSet(constraints, targetClasses, classRuleMap);
 
   const baseOrderedSlots: { d: number; p: number }[] = [];
   for (let p = 0; p < PERIODS.length; p++) {
@@ -2241,21 +2333,50 @@ function generateInitialGrid(data: InputRow[], constraints: Constraint[] = [], a
       }
     });
 
-    // 2. Áp dụng ràng buộc Tiết cố định
+    // 2. Áp dụng ràng buộc Tiết cố định (Hỗ trợ từng lớp, theo Khối và TOÀN TRƯỜNG 'ALL')
     constraints.forEach(c => {
-      if (c.type === 'FIXED_SESSION' && c.className && c.subject && c.day !== undefined && c.period !== undefined) {
-        const cls = c.className;
-        const need = needs[cls]?.find(n => n.subject === c.subject);
-        if (need && need.remaining > 0) {
-          need.remaining--;
-          grid[cls][c.day][c.period] = {
-            day: c.day,
-            period: c.period,
-            subject: c.subject,
-            teacher: need.teacher
+      if (c.type === 'FIXED_SESSION' && c.subject && c.day !== undefined && c.period !== undefined) {
+        const targetClsList = getTargetClassesForConstraint(c.className, targetClasses);
+
+        targetClsList.forEach(cls => {
+          if (!grid[cls] || !grid[cls][c.day!]) return;
+
+          // Điều chỉnh tiết phù hợp nếu ngày đó buổi sáng chỉ có 4 tiết (do có học chiều)
+          let targetP = c.period!;
+          if (!isSlotAllowedForClass(cls, c.day!, targetP, classRuleMap) && isSlotAllowedForClass(cls, c.day!, targetP - 1, classRuleMap)) {
+            targetP = targetP - 1;
+          }
+
+          if (grid[cls][c.day!][targetP] !== null) return;
+
+          // Khớp phân công môn học (ưu tiên khớp chính xác, sau đó khớp tên tương đương/viết tắt)
+          let need = needs[cls]?.find(n => n.remaining > 0 && n.subject === c.subject);
+          if (!need) {
+            need = needs[cls]?.find(n => n.remaining > 0 && isSubjectMatching(n.subject, c.subject!));
+          }
+
+          let assignedTeacher = '';
+          if (need && need.remaining > 0) {
+            need.remaining--;
+            assignedTeacher = need.teacher;
+          } else {
+            // Nếu lớp chưa có phân công trong data, tìm giáo viên của lớp hoặc gán GVCN/BGH
+            const anyTeacherOfClass = data.find(r => r.className === cls && r.teacher)?.teacher;
+            assignedTeacher = anyTeacherOfClass ? anyTeacherOfClass : 'GV Phụ trách';
+          }
+
+          grid[cls][c.day!][targetP] = {
+            day: c.day!,
+            period: targetP,
+            subject: need ? need.subject : c.subject!,
+            teacher: assignedTeacher
           };
-          teacherBusy[c.day][c.period].add(need.teacher);
-        }
+
+          const isGeneral = /^(bgh|ban giám hiệu|tpt|tổng phụ trách|toàn trường|gvcn)$/i.test(assignedTeacher.trim());
+          if (assignedTeacher && !isGeneral) {
+            teacherBusy[c.day!][targetP].add(assignedTeacher);
+          }
+        });
       }
     });
 
@@ -2315,9 +2436,9 @@ function generateInitialGrid(data: InputRow[], constraints: Constraint[] = [], a
 
           if (need.subject === 'GDTC' && (p === 4 || p === 7)) return false;
 
-          // Kiểm tra tính liên tục, không tạo lỗ lủng tiết
+          // Kiểm tra tính liên tục, không tạo lỗ lủng tiết (có tính đến các ô cố định)
           grid[cls][d][p] = { day: d, period: p, subject: need.subject, teacher: need.teacher };
-          const hasGap = checkClassHasGaps(grid, cls, d);
+          const hasGap = checkClassHasGaps(grid, cls, d, fixedSlots);
           grid[cls][d][p] = null;
           if (hasGap) return false;
 
@@ -2407,12 +2528,7 @@ function optimizeWithSimulatedAnnealing(
   let bestGrid = JSON.parse(JSON.stringify(currentGrid)) as TimetableGrid;
   let bestPenalty = currentPenalty;
 
-  const fixedSlots = new Set<string>();
-  constraints.forEach(c => {
-    if (c.type === 'FIXED_SESSION' && c.className && c.day !== undefined && c.period !== undefined) {
-      fixedSlots.add(`${c.className}_${c.day}_${c.period}`);
-    }
-  });
+  const fixedSlots = buildFixedSlotsSet(constraints, classesList, classRuleMap);
 
   const teacherBusySet = buildTeacherBusySet(constraints);
 
@@ -2805,12 +2921,7 @@ export const generateSchedule = (
   );
 
   // Bước 3: Nghiệm thu toàn diện & Khử trùng tiết khẩn cấp (Emergency Zero-Collision Desynchronizer)
-  const fixedSlots = new Set<string>();
-  constraints.forEach(c => {
-    if (c.type === 'FIXED_SESSION' && c.className && c.day !== undefined && c.period !== undefined) {
-      fixedSlots.add(`${c.className}_${c.day}_${c.period}`);
-    }
-  });
+  const fixedSlots = buildFixedSlotsSet(constraints, targetClasses, initial.classRuleMap);
   const teacherBusySet = buildTeacherBusySet(constraints);
 
   // 🛡️ NGUYÊN TẮC BẤT BIẾN: TÍCH CHỌN Ở ĐÂU THÌ TKB BẮT BUỘC PHẢI XẾP VÀO ĐÓ

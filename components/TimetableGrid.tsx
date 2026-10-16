@@ -153,15 +153,33 @@ const TimetableGridDisplay: React.FC<Props> = ({ data, onEditCell, shift, onShif
                             );
                           }
 
+                          const isFixed = constraints?.some(c => {
+                            if (c.type !== 'FIXED_SESSION') return false;
+                            if (c.day !== dayIdx || c.period !== periodIdx) return false;
+                            if (!c.className || c.className === 'ALL' || c.className === 'ALL_CLASSES' || c.className === 'TOAN_TRUONG') return true;
+                            if (c.className.startsWith('KHOI_') || c.className.startsWith('GRADE_')) {
+                              const g = c.className.replace(/^(KHOI_|GRADE_)/, '');
+                              return cls.startsWith(g) || cls.startsWith(`Lớp ${g}`);
+                            }
+                            return c.className === cls;
+                          });
+
                           return (
                             <div 
                               key={cls} 
-                              className={`p-2 text-xs flex flex-col justify-center min-h-[50px] transition-colors text-center border-b-transparent ${onEditCell ? 'cursor-pointer hover:bg-blue-100 bg-white' : 'hover:bg-blue-50'}`}
+                              className={`p-2 text-xs flex flex-col justify-center min-h-[50px] transition-colors text-center border-b-transparent ${
+                                isFixed ? 'bg-emerald-50/50' : 'bg-white'
+                              } ${onEditCell ? 'cursor-pointer hover:bg-blue-100' : 'hover:bg-blue-50'}`}
                               onClick={() => handleCellClick(cls, dayIdx, periodIdx)}
                             >
                               {session ? (
                                 <>
-                                  <span className="font-bold text-gray-800">{session.subject}</span>
+                                  <div className="flex items-center justify-center gap-1">
+                                    <span className="font-bold text-gray-800">{session.subject}</span>
+                                    {isFixed && (
+                                      <span title="Tiết cố định" className="text-[10px] text-emerald-600 font-bold">📌</span>
+                                    )}
+                                  </div>
                                   <span className="text-gray-500 italic">{session.teacher}</span>
                                 </>
                               ) : (

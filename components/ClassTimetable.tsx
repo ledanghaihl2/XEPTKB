@@ -134,16 +134,34 @@ const ClassTimetable: React.FC<Props> = ({ schedule, onEditCell, shift, onShiftC
                         return <div key={day} className="bg-gray-200"></div>;
                     }
 
+                    const isFixed = constraints?.some(c => {
+                      if (c.type !== 'FIXED_SESSION') return false;
+                      if (c.day !== dIdx || c.period !== pIdx) return false;
+                      if (!c.className || c.className === 'ALL' || c.className === 'ALL_CLASSES' || c.className === 'TOAN_TRUONG') return true;
+                      if (c.className.startsWith('KHOI_') || c.className.startsWith('GRADE_')) {
+                        const g = c.className.replace(/^(KHOI_|GRADE_)/, '');
+                        return cls.startsWith(g) || cls.startsWith(`Lớp ${g}`);
+                      }
+                      return c.className === cls;
+                    });
+
                     const session = schedule[cls]?.[dIdx]?.[pIdx];
                     return (
                       <div 
                         key={day} 
-                        className={`p-2 text-sm flex flex-col justify-center min-h-[60px] transition-colors text-center bg-white ${onEditCell ? 'cursor-pointer hover:bg-blue-100' : 'hover:bg-blue-50'}`}
+                        className={`p-2 text-sm flex flex-col justify-center min-h-[60px] transition-colors text-center ${
+                          isFixed ? 'bg-emerald-50/50' : 'bg-white'
+                        } ${onEditCell ? 'cursor-pointer hover:bg-blue-100' : 'hover:bg-blue-50'}`}
                         onClick={() => handleCellClick(cls, dIdx, pIdx)}
                       >
                         {session ? (
                           <>
-                            <span className="font-bold text-gray-800">{session.subject || ''}</span>
+                            <div className="flex items-center justify-center gap-1">
+                              <span className="font-bold text-gray-800">{session.subject || ''}</span>
+                              {isFixed && (
+                                <span title="Tiết cố định" className="text-xs text-emerald-600 font-bold">📌</span>
+                              )}
+                            </div>
                             <span className="text-gray-500">{session.teacher || ''}</span>
                           </>
                         ) : (
