@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
-import { InputRow, TimetableGrid, ScheduleResult, Constraint, TimetableVersion, ShiftType, OptimizationMetrics } from './types';
-import { SAMPLE_DATA, SHIFT_OPTIONS, STORAGE_KEY_ALLOW_CROSS_DAY_SWAP } from './constants';
+import { InputRow, TimetableGrid, ScheduleResult, Constraint, TimetableVersion, ShiftType, OptimizationMetrics, ExcelImportResult } from './types';
+import { SAMPLE_DATA, SHIFT_OPTIONS, STORAGE_KEY_ALLOW_CROSS_DAY_SWAP, CLASSES } from './constants';
 import { generateSchedule } from './services/schedulerEngine';
 import { exportScheduleToExcel } from './services/excelExporter';
 import { parseExcelData } from './services/excelImporter';
+import { mergeAssignments, mergeSchedules } from './utils/mergeAssignments';
 import TimetableGridDisplay from './components/TimetableGrid';
 import TeacherTimetable from './components/TeacherTimetable';
 import ClassTimetable from './components/ClassTimetable';
@@ -15,6 +16,7 @@ import AddAssignmentModal from './components/AddAssignmentModal';
 import { VersionManagerModal } from './components/VersionManagerModal';
 import { SupabaseConfigModal } from './components/SupabaseConfigModal';
 import { GeminiAssistantModal } from './components/GeminiAssistantModal';
+import { ImportConfirmModal } from './components/ImportConfirmModal';
 import { isSupabaseConfigured } from './services/supabaseClient';
 import { isGeminiConfigured, getGeminiModel } from './services/geminiService';
 import {
@@ -109,6 +111,7 @@ function App() {
   const [isHasGemini, setIsHasGemini] = useState<boolean>(() => isGeminiConfigured());
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [optimizationMetrics, setOptimizationMetrics] = useState<OptimizationMetrics | null>(null);
+  const [pendingImport, setPendingImport] = useState<{ fileName: string; result: ExcelImportResult } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // State quản lý Bật/Tắt Hoán đổi liên ngày khi kẹt cứng (Cross-day Teacher Swapping)
@@ -285,10 +288,54 @@ function App() {
     };
   }, []);
 
-  // Derived unique lists for dropdowns
-  const uniqueTeachers = useMemo(() => Array.from(new Set(data.map(r => r.teacher))).sort(), [data]);
-  const uniqueClasses = useMemo(() => Array.from(new Set(data.map(r => r.className))).sort(), [data]);
-  const uniqueSubjects = useMemo(() => Array.from(new Set(data.map(r => r.subject))).sort(), [data]);
+  // Derived dynamic lists for dropdowns and dynamic displays across all views
+  const dynamicClasses = useMemo(() => {
+    const set = new Set<string>();
+    data.forEach(r => {
+      if (r.className && r.className.trim()) set.add(r.className.trim());
+    });
+    Object.keys(schedule).forEach(cls => {
+      if (cls && cls.trim()) set.add(cls.trim());
+    });
+    if (set.size === 0) {
+      CLASSES.forEach(c => set.add(c));
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
+  }, [data, schedule]);
+
+  const dynamicTeachers = useMemo(() => {
+    const set = new Set<string>();
+    data.forEach(r => {
+      if (r.teacher && r.teacher.trim()) set.add(r.teacher.trim());
+    });
+    Object.values(schedule).forEach(grid => {
+      grid?.forEach(day => {
+        day?.forEach(cell => {
+          if (cell?.teacher && cell.teacher.trim()) set.add(cell.teacher.trim());
+        });
+      });
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'vi'));
+  }, [data, schedule]);
+
+  const dynamicSubjects = useMemo(() => {
+    const set = new Set<string>();
+    data.forEach(r => {
+      if (r.subject && r.subject.trim()) set.add(r.subject.trim());
+    });
+    Object.values(schedule).forEach(grid => {
+      grid?.forEach(day => {
+        day?.forEach(cell => {
+          if (cell?.subject && cell.subject.trim()) set.add(cell.subject.trim());
+        });
+      });
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'vi'));
+  }, [data, schedule]);
+
+  const uniqueTeachers = dynamicTeachers;
+  const uniqueClasses = dynamicClasses;
+  const uniqueSubjects = dynamicSubjects;
 
   const handleGenerate = (currentData = data) => {
     setIsGenerating(true);
@@ -351,7 +398,7 @@ function App() {
   };
 
   const handleExportExcel = () => {
-    exportScheduleToExcel(schedule, data, selectedShift, constraints);
+    exportScheduleToExcel(schedule, data, selectedShift, constraints, dynamicClasses);
   };
 
   const handleImportClick = () => {
@@ -368,26 +415,83 @@ function App() {
 
       // Reset input để có thể chọn lại cùng 1 file nếu cần
       if (fileInputRef.current) fileInputRef.current.value = '';
+      setIsGenerating(false);
 
-      // Tự động tạo "Phiên bản lưu trữ" (Auto-snapshot) trước khi nạp dữ liệu mới
       const hasExistingData = data.length > 0 || Object.keys(schedule).length > 0;
-      let autoSaved = false;
       if (hasExistingData) {
-        const timeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        const snapshotName = `[Tự động sao lưu] Trước khi nhập "${file.name}" (${timeStr})`;
-        handleSaveCurrentVersion(snapshotName, true);
-        autoSaved = true;
+        setPendingImport({ fileName: file.name, result });
+      } else {
+        executeImport(result, file.name, 'REPLACE');
       }
+    } catch (err: any) {
+      alert(typeof err === 'string' ? err : (err?.message || 'Lỗi khi đọc file Excel.'));
+      setIsGenerating(false);
+    }
+  };
 
-      const autoSaveNote = autoSaved
-        ? '\n\n🛡️ Bản TKB trước đó đã được tự động lưu vào mục "Quản lý phiên bản" để Thầy/Cô có thể hoàn tác (Undo) bất kỳ lúc nào!'
-        : '';
+  const executeImport = (result: ExcelImportResult, fileName: string, action: 'MERGE' | 'REPLACE') => {
+    const timeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const actionLabel = action === 'MERGE' ? 'bổ sung thêm' : 'thay thế';
+    const snapshotName = `[Tự động sao lưu] Trước khi ${actionLabel} "${fileName}" (${timeStr})`;
+    handleSaveCurrentVersion(snapshotName, true);
 
+    const autoSaveNote = '\n\n🛡️ Bản TKB trước đó đã được tự động lưu vào mục "Quản lý phiên bản" để Thầy/Cô có thể hoàn tác (Undo) bất kỳ lúc nào!';
+
+    if (action === 'MERGE') {
+      if (result.mode === 'TIMETABLE_GRID' && result.schedule) {
+        const mergedData = mergeAssignments(data, result.data);
+        const mergedSchedule = mergeSchedules(schedule, result.schedule);
+        setData(mergedData);
+        setSchedule(mergedSchedule);
+        setUnassigned(result.unassigned || []);
+        setActiveTab('schedule');
+
+        const detectedClasses = result.detectedClasses || [];
+        const detectedTeachers = result.detectedTeachers || [];
+        const newClasses = detectedClasses.filter(c => !dynamicClasses.includes(c));
+        const newTeachers = detectedTeachers.filter(t => !dynamicTeachers.includes(t));
+
+        let addSummary = `✅ Đã bổ sung thành công Thời khóa biểu từ Excel!`;
+        if (newClasses.length > 0) addSummary += `\n🏫 Bổ sung ${newClasses.length} lớp mới: ${newClasses.join(', ')}`;
+        if (newTeachers.length > 0) addSummary += `\n👨‍🏫 Bổ sung ${newTeachers.length} giáo viên mới: ${newTeachers.join(', ')}`;
+        addSummary += autoSaveNote;
+
+        alert(addSummary);
+
+        if (result.conflicts && result.conflicts.length > 0) {
+          const conflictPreview = result.conflicts.slice(0, 4).join('\n• ');
+          const extra = result.conflicts.length > 4 ? `\n... và ${result.conflicts.length - 4} vị trí trùng khác.` : '';
+          const shouldAutoFix = window.confirm(
+            `⚠️ CẢNH BÁO TRÙNG LỊCH GIÁO VIÊN (${result.conflicts.length} tiết):\n• ${conflictPreview}${extra}\n\nThầy/Cô có muốn hệ thống TỰ ĐỘNG XẾP LẠI NGAY để khử sạch 100% các tiết trùng này không?`
+          );
+          if (shouldAutoFix) {
+            handleGenerate(mergedData);
+          }
+        }
+      } else {
+        const mergedData = mergeAssignments(data, result.data);
+        setData(mergedData);
+
+        const detectedClasses = result.detectedClasses || [];
+        const detectedTeachers = result.detectedTeachers || [];
+        const newClasses = detectedClasses.filter(c => !dynamicClasses.includes(c));
+        const newTeachers = detectedTeachers.filter(t => !dynamicTeachers.includes(t));
+
+        let addSummary = `✅ Đã bổ sung thành công ${result.data.length} dòng phân công từ Excel!`;
+        if (newClasses.length > 0) addSummary += `\n🏫 Bổ sung ${newClasses.length} lớp mới: ${newClasses.join(', ')}`;
+        if (newTeachers.length > 0) addSummary += `\n👨‍🏫 Bổ sung ${newTeachers.length} giáo viên mới: ${newTeachers.join(', ')}`;
+        addSummary += `\n\n⚡ Đang tự động xếp thời khóa biểu tối ưu cho toàn trường...`;
+        addSummary += autoSaveNote;
+
+        alert(addSummary);
+        handleGenerate(mergedData);
+      }
+    } else {
+      // REPLACE mode
       if (result.mode === 'TIMETABLE_GRID' && result.schedule) {
         setSchedule(result.schedule);
         setData(result.data);
         setUnassigned(result.unassigned || []);
-        setIsGenerating(false);
         setActiveTab('schedule');
 
         if (result.conflicts && result.conflicts.length > 0) {
@@ -407,9 +511,6 @@ function App() {
         alert(`✅ Đã nhập thành công ${result.data.length} dòng dữ liệu phân công! Đang tự động xếp thời khóa biểu tối ưu...${autoSaveNote}`);
         handleGenerate(result.data);
       }
-    } catch (err: any) {
-      alert(typeof err === 'string' ? err : (err?.message || 'Lỗi khi đọc file Excel.'));
-      setIsGenerating(false);
     }
   };
 
@@ -587,9 +688,9 @@ function App() {
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, wsPhanCong, "PhanCong");
 
-                const uniqueClasses = Array.from(new Set(data.map(d => d.className))).sort();
-                const uniqueSubjects = Array.from(new Set(data.map(d => d.subject))).sort();
-                const uniqueTeachers = Array.from(new Set(data.map(d => d.teacher))).sort();
+                const uniqueClasses = dynamicClasses;
+                const uniqueSubjects = dynamicSubjects;
+                const uniqueTeachers = dynamicTeachers;
                 
                 const maxLen = Math.max(uniqueClasses.length, uniqueSubjects.length, uniqueTeachers.length);
                 const listData = [];
@@ -839,6 +940,7 @@ function App() {
                 shift={selectedShift}
                 onShiftChange={setSelectedShift}
                 constraints={constraints}
+                classes={dynamicClasses}
                 onEditCell={(className, day, period, subject, teacher) => {
                   setSchedule(prev => {
                     const newSchedule = { ...prev };
@@ -869,6 +971,7 @@ function App() {
                 shift={selectedShift}
                 onShiftChange={setSelectedShift}
                 constraints={constraints}
+                classes={dynamicClasses}
               />
             </div>
           )}
@@ -880,6 +983,7 @@ function App() {
                 shift={selectedShift}
                 onShiftChange={setSelectedShift}
                 constraints={constraints}
+                classes={dynamicClasses}
                 onEditCell={(className, day, period, subject, teacher) => {
                   setSchedule(prev => {
                     const newSchedule = { ...prev };
@@ -905,7 +1009,7 @@ function App() {
           
           {activeTab === 'reports' && (
             <div id="print-reports">
-              <Reports rawData={data} schedule={schedule} />
+              <Reports rawData={data} schedule={schedule} classes={dynamicClasses} />
             </div>
           )}
 
@@ -936,8 +1040,33 @@ function App() {
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
         onSave={handleSaveManualAssignment}
-        existingTeachers={uniqueTeachers}
-        existingSubjects={uniqueSubjects}
+        existingTeachers={dynamicTeachers}
+        existingSubjects={dynamicSubjects}
+        existingClasses={dynamicClasses}
+      />
+
+      <ImportConfirmModal
+        isOpen={Boolean(pendingImport)}
+        onClose={() => setPendingImport(null)}
+        fileName={pendingImport?.fileName || ''}
+        importResult={pendingImport?.result || null}
+        existingClasses={dynamicClasses}
+        existingTeachers={dynamicTeachers}
+        isSampleData={data.length === SAMPLE_DATA.length && data[0]?.teacher === SAMPLE_DATA[0]?.teacher && data[0]?.className === SAMPLE_DATA[0]?.className}
+        onConfirmMerge={() => {
+          if (pendingImport) {
+            const { result, fileName } = pendingImport;
+            setPendingImport(null);
+            executeImport(result, fileName, 'MERGE');
+          }
+        }}
+        onConfirmReplace={() => {
+          if (pendingImport) {
+            const { result, fileName } = pendingImport;
+            setPendingImport(null);
+            executeImport(result, fileName, 'REPLACE');
+          }
+        }}
       />
 
       <VersionManagerModal

@@ -8,12 +8,21 @@ interface Props {
   onSave: (data: Omit<InputRow, 'id'>) => void;
   existingTeachers?: string[]; // Autocomplete suggestion
   existingSubjects?: string[]; // Autocomplete suggestion
+  existingClasses?: string[];  // Autocomplete suggestion & class list
 }
 
-const AddAssignmentModal: React.FC<Props> = ({ isOpen, onClose, onSave, existingTeachers = [], existingSubjects = [] }) => {
+const AddAssignmentModal: React.FC<Props> = ({ 
+  isOpen, 
+  onClose, 
+  onSave, 
+  existingTeachers = [], 
+  existingSubjects = [],
+  existingClasses = []
+}) => {
+  const classOptions = existingClasses.length > 0 ? existingClasses : CLASSES;
   const [teacher, setTeacher] = useState('');
   const [subject, setSubject] = useState('');
-  const [className, setClassName] = useState(CLASSES[0]);
+  const [className, setClassName] = useState(classOptions[0] || '6A');
   const [sessions, setSessions] = useState(1);
 
   if (!isOpen) return null;
@@ -84,15 +93,20 @@ const AddAssignmentModal: React.FC<Props> = ({ isOpen, onClose, onSave, existing
             {/* Class Selection */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Lớp</label>
-              <select
+              <input
+                list="class-suggestions"
+                type="text"
                 value={className}
-                onChange={(e) => setClassName(e.target.value)}
+                onChange={(e) => setClassName(e.target.value.trim())}
                 className="w-full p-2 border border-gray-300 rounded focus:ring-primary focus:border-primary"
-              >
-                {CLASSES.map(c => (
-                  <option key={c} value={c}>{c}</option>
+                placeholder="Chọn hoặc nhập tên lớp..."
+                required
+              />
+              <datalist id="class-suggestions">
+                {classOptions.map(c => (
+                  <option key={c} value={c} />
                 ))}
-              </select>
+              </datalist>
             </div>
 
             {/* Sessions Input */}

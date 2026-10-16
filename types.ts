@@ -97,6 +97,7 @@ export interface ExcelImportResult {
   unassigned?: InputRow[];
   conflicts?: string[];
   detectedClasses?: string[];
+  detectedTeachers?: string[];
   message?: string;
 }
 

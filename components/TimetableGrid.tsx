@@ -8,9 +8,10 @@ interface Props {
   shift?: ShiftType;
   onShiftChange?: (shift: ShiftType) => void;
   constraints?: Constraint[];
+  classes?: string[];
 }
 
-const TimetableGridDisplay: React.FC<Props> = ({ data, onEditCell, shift, onShiftChange, constraints }) => {
+const TimetableGridDisplay: React.FC<Props> = ({ data, onEditCell, shift, onShiftChange, constraints, classes }) => {
   const [internalShift, setInternalShift] = useState<ShiftType>('ALL');
   const currentShift = shift ?? internalShift;
 
@@ -78,82 +79,93 @@ const TimetableGridDisplay: React.FC<Props> = ({ data, onEditCell, shift, onShif
         </div>
       </div>
 
-      <div className="border border-gray-300 min-w-[1200px]">
-        <div className="grid grid-cols-[80px_100px_repeat(11,minmax(80px,1fr))] divide-x divide-gray-300 bg-primary text-white sticky top-0 z-10">
-          <div className="font-bold p-2 text-center flex items-center justify-center">Thứ</div>
-          <div className="font-bold p-2 text-center flex items-center justify-center">Tiết</div>
-          {CLASSES.map(cls => (
-            <div key={cls} className="font-bold p-2 text-center">{cls}</div>
-          ))}
-        </div>
+      {/* Dynamic Classes & Columns calculation */}
+      {(() => {
+        const displayClasses = classes && classes.length > 0 ? classes : (
+          Object.keys(data).length > 0 ? Object.keys(data).sort((a, b) => a.localeCompare(b, 'vi', { numeric: true })) : CLASSES
+        );
+        const gridColsStyle = { gridTemplateColumns: `80px 100px repeat(${displayClasses.length}, minmax(80px, 1fr))` };
+        const containerMinW = Math.max(1200, 180 + displayClasses.length * 85);
 
-        {DAYS.map((day, dayIdx) => {
-          // Lọc các tiết hợp lệ trong ngày thỏa mãn ca/buổi học đang chọn
-          const validPeriodsInDay = PERIODS.map((_, p) => p).filter(
-            p => isValidSlot(dayIdx, p, constraints) && isPeriodInShift(p, currentShift)
-          );
-          if (validPeriodsInDay.length === 0) return null;
+        return (
+          <div className="border border-gray-300" style={{ minWidth: `${containerMinW}px` }}>
+            <div className="grid divide-x divide-gray-300 bg-primary text-white sticky top-0 z-10" style={gridColsStyle}>
+              <div className="font-bold p-2 text-center flex items-center justify-center">Thứ</div>
+              <div className="font-bold p-2 text-center flex items-center justify-center">Tiết</div>
+              {displayClasses.map(cls => (
+                <div key={cls} className="font-bold p-2 text-center">{cls}</div>
+              ))}
+            </div>
 
-          const firstPeriodInDay = validPeriodsInDay[0];
-          const lastPeriodInDay = validPeriodsInDay[validPeriodsInDay.length - 1];
+            {DAYS.map((day, dayIdx) => {
+              // Lọc các tiết hợp lệ trong ngày thỏa mãn ca/buổi học đang chọn
+              const validPeriodsInDay = PERIODS.map((_, p) => p).filter(
+                p => isValidSlot(dayIdx, p, constraints) && isPeriodInShift(p, currentShift)
+              );
+              if (validPeriodsInDay.length === 0) return null;
 
-          return (
-            <React.Fragment key={day}>
-              {validPeriodsInDay.map((periodIdx) => {
-                const period = PERIODS[periodIdx];
-                const isDayEnd = periodIdx === lastPeriodInDay;
-                const isDayStart = periodIdx === firstPeriodInDay;
+              const firstPeriodInDay = validPeriodsInDay[0];
+              const lastPeriodInDay = validPeriodsInDay[validPeriodsInDay.length - 1];
 
-                return (
-                  <div key={`${day}-${period}`} className={`grid grid-cols-[80px_100px_repeat(11,minmax(80px,1fr))] divide-x divide-gray-300 ${isDayEnd ? 'border-b-4 border-gray-800' : (periodIdx === 4 || periodIdx === 7 ? 'border-b-4 border-gray-400' : 'border-b border-gray-200')}`}>
-                    
-                    {/* Day Column */}
-                    {isDayStart ? (
-                      <div className="p-2 flex items-center justify-center font-bold bg-gray-100 border-r text-sm">
-                        {day}
-                        {currentShift === 'AFTERNOON' && (
-                          <>
-                            <br />
-                            <span className="text-[11px] font-normal text-gray-500">(Chiều)</span>
-                          </>
+              return (
+                <React.Fragment key={day}>
+                  {validPeriodsInDay.map((periodIdx) => {
+                    const period = PERIODS[periodIdx];
+                    const isDayEnd = periodIdx === lastPeriodInDay;
+                    const isDayStart = periodIdx === firstPeriodInDay;
+
+                    return (
+                      <div key={`${day}-${period}`} className={`grid divide-x divide-gray-300 ${isDayEnd ? 'border-b-4 border-gray-800' : (periodIdx === 4 || periodIdx === 7 ? 'border-b-4 border-gray-400' : 'border-b border-gray-200')}`} style={gridColsStyle}>
+                        
+                        {/* Day Column */}
+                        {isDayStart ? (
+                          <div className="p-2 flex items-center justify-center font-bold bg-gray-100 border-r text-sm">
+                            {day}
+                            {currentShift === 'AFTERNOON' && (
+                              <>
+                                <br />
+                                <span className="text-[11px] font-normal text-gray-500">(Chiều)</span>
+                              </>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="p-2 flex items-center justify-center bg-gray-50 border-r text-transparent text-xs select-none">
+                            {day}
+                          </div>
                         )}
-                      </div>
-                    ) : (
-                      <div className="p-2 flex items-center justify-center bg-gray-50 border-r text-transparent text-xs select-none">
-                        {day}
-                      </div>
-                    )}
 
-                    <div className="p-2 flex items-center justify-center font-medium text-gray-600 bg-gray-50 text-center text-sm">
-                      {period}
-                    </div>
-
-                    {CLASSES.map(cls => {
-                      const session = data[cls]?.[dayIdx]?.[periodIdx];
-                      return (
-                        <div 
-                          key={cls} 
-                          className={`p-2 text-xs flex flex-col justify-center min-h-[50px] transition-colors text-center border-b-transparent ${onEditCell ? 'cursor-pointer hover:bg-blue-100 bg-white' : 'hover:bg-blue-50'}`}
-                          onClick={() => handleCellClick(cls, dayIdx, periodIdx)}
-                        >
-                          {session ? (
-                            <>
-                              <span className="font-bold text-gray-800">{session.subject}</span>
-                              <span className="text-gray-500 italic">{session.teacher}</span>
-                            </>
-                          ) : (
-                            <span className="text-gray-300">-</span>
-                          )}
+                        <div className="p-2 flex items-center justify-center font-medium text-gray-600 bg-gray-50 text-center text-sm">
+                          {period}
                         </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
-            </React.Fragment>
-          );
-        })}
-      </div>
+
+                        {displayClasses.map(cls => {
+                          const session = data[cls]?.[dayIdx]?.[periodIdx];
+                          return (
+                            <div 
+                              key={cls} 
+                              className={`p-2 text-xs flex flex-col justify-center min-h-[50px] transition-colors text-center border-b-transparent ${onEditCell ? 'cursor-pointer hover:bg-blue-100 bg-white' : 'hover:bg-blue-50'}`}
+                              onClick={() => handleCellClick(cls, dayIdx, periodIdx)}
+                            >
+                              {session ? (
+                                <>
+                                  <span className="font-bold text-gray-800">{session.subject}</span>
+                                  <span className="text-gray-500 italic">{session.teacher}</span>
+                                </>
+                              ) : (
+                                <span className="text-gray-300">-</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </React.Fragment>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* Edit Modal */}
       {editingCell && (

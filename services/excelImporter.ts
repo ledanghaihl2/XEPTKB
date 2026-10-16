@@ -167,10 +167,11 @@ export const parseExcelData = async (file: File): Promise<ExcelImportResult> => 
                 dayIdx = cIdx;
               } else if (/^(tiết|tiet|period|buổi\s*tiết)$/i.test(cellStr)) {
                 periodIdx = cIdx;
-              } else if (cellStr && cellStr.length <= 15 && !/^(stt|ghi\s*chú|note)$/i.test(cellStr)) {
-                // Kiểm tra có khớp danh sách lớp đã biết hoặc quy tắc lớp học (ví dụ: 6A, 7B, 10A1...)
-                if (CLASSES.includes(cellStr) || /^[0-9]{1,2}[A-Za-z0-9_]+$/.test(cellStr)) {
-                  foundClasses.push({ colIdx: cIdx, className: cellStr });
+              } else if (cellStr && cellStr.length <= 20 && !/^(stt|ghi\s*chú|note|thời\s*gian)$/i.test(cellStr)) {
+                // Kiểm tra có khớp danh sách lớp đã biết hoặc quy tắc lớp học (ví dụ: 6A, 6A1, 6/1, 7B, 10A1, 10 Toán...)
+                const clean = cellStr.replace(/^(lớp|lop)\s*/i, '').trim();
+                if (CLASSES.includes(cellStr) || CLASSES.includes(clean) || /^[0-9]{1,2}[\s\/\.\-]?[A-Za-z0-9_À-ỹ\s]+$/i.test(clean)) {
+                  foundClasses.push({ colIdx: cIdx, className: clean || cellStr });
                 }
               }
             });
@@ -314,6 +315,7 @@ export const parseExcelData = async (file: File): Promise<ExcelImportResult> => 
             data: aggregatedData,
             conflicts,
             detectedClasses: detectedClassNames,
+            detectedTeachers: Array.from(new Set(aggregatedData.map(r => r.teacher))),
             message: `Đã đọc thành công ma trận Thời khóa biểu từ Sheet "${matrixSheetName}"`
           });
           return;
@@ -358,6 +360,8 @@ export const parseExcelData = async (file: File): Promise<ExcelImportResult> => 
           resolve({
             mode: 'ASSIGNMENT_LIST',
             data: processedData,
+            detectedClasses: Array.from(new Set(processedData.map(r => r.className))),
+            detectedTeachers: Array.from(new Set(processedData.map(r => r.teacher))),
             message: `Đã đọc danh sách phân công gồm ${processedData.length} dòng.`
           });
           return;

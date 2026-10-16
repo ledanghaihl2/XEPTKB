@@ -15,7 +15,8 @@ export const exportScheduleToExcel = async (
   schedule: TimetableGrid, 
   rawData: InputRow[], 
   selectedShift: ShiftType = 'ALL',
-  constraints?: Constraint[]
+  constraints?: Constraint[],
+  classes?: string[]
 ) => {
   try {
     if (!(window as any).XLSX) {
@@ -24,6 +25,12 @@ export const exportScheduleToExcel = async (
     }
     const XLSX = (window as any).XLSX;
     const wb = XLSX.utils.book_new();
+
+    const targetClasses = classes && classes.length > 0 ? classes : (
+      rawData.length > 0 ? Array.from(new Set(rawData.map(r => r.className))).sort((a,b) => a.localeCompare(b, 'vi', {numeric: true})) : (
+        Object.keys(schedule).length > 0 ? Object.keys(schedule).sort((a,b) => a.localeCompare(b, 'vi', {numeric: true})) : CLASSES
+      )
+    );
 
   const applySheetStyles = (ws: any, rowBorders: Set<number> = new Set()) => {
     if (!ws['!ref']) return;
@@ -67,7 +74,7 @@ export const exportScheduleToExcel = async (
   // --- SHEET 1: THỜI KHÓA BIỂU ---
   const wsDataTKB: (string | number)[][] = [];
   // Header Row
-  wsDataTKB.push(['Thứ', 'Tiết', ...CLASSES]);
+  wsDataTKB.push(['Thứ', 'Tiết', ...targetClasses]);
 
   const mainTkbBorders = new Set<number>();
   let currentRowIdx = 0; // Header is row 0
@@ -97,7 +104,7 @@ export const exportScheduleToExcel = async (
          mainTkbBorders.add(currentRowIdx);
       }
 
-      CLASSES.forEach(cls => {
+      targetClasses.forEach(cls => {
         const session = schedule[cls]?.[dIdx]?.[pIdx];
         // Combine Subject and Teacher into one cell
         row.push(session ? `${session.subject}\n(${session.teacher})` : '');
@@ -110,7 +117,7 @@ export const exportScheduleToExcel = async (
   
   // Basic formatting hints (widening columns slightly)
   const wscols = [{ wch: 10 }, { wch: 12 }];
-  CLASSES.forEach(() => wscols.push({ wch: 20 }));
+  targetClasses.forEach(() => wscols.push({ wch: 20 }));
   wsTKB['!cols'] = wscols;
   applySheetStyles(wsTKB, mainTkbBorders);
 
@@ -118,7 +125,7 @@ export const exportScheduleToExcel = async (
 
   // Các dải ô chuẩn trong sheet 'TKB Lớp' để làm công thức liên kết động
   const firstClassCol = XLSX.utils.encode_col(2); // Cột C (Lớp đầu tiên)
-  const lastClassCol = XLSX.utils.encode_col(2 + CLASSES.length - 1); // Cột lớp cuối cùng
+  const lastClassCol = XLSX.utils.encode_col(2 + targetClasses.length - 1); // Cột lớp cuối cùng
   const classHeaderRange = `'TKB Lớp'!$${firstClassCol}$1:$${lastClassCol}$1`;
   const maxTkbRow = currentRowIdx + 1;
   const fullTkbGridRange = `'TKB Lớp'!$${firstClassCol}$2:$${lastClassCol}$${maxTkbRow}`;
@@ -126,7 +133,7 @@ export const exportScheduleToExcel = async (
   // Tìm tất cả giáo viên từ phân công gốc và thời khóa biểu thực tế
   const teacherSet = new Set<string>();
   rawData.forEach(r => { if (r.teacher && r.teacher.trim()) teacherSet.add(r.teacher.trim()); });
-  CLASSES.forEach(cls => {
+  targetClasses.forEach(cls => {
     schedule[cls]?.forEach(day => {
       day?.forEach(session => {
         if (session?.teacher && session.teacher.trim()) {
@@ -164,7 +171,7 @@ export const exportScheduleToExcel = async (
         }
 
         let found = '';
-        for (const cls of CLASSES) {
+        for (const cls of targetClasses) {
           const session = schedule[cls]?.[dIdx]?.[pIdx];
           if (session && session.teacher === teacher) {
              found = `${cls}\n(${session.subject})`;
@@ -267,7 +274,7 @@ export const exportScheduleToExcel = async (
   const wsDataTKB_Class: any[][] = [];
   const mergesC: any[] = [];
 
-  CLASSES.forEach((cls) => {
+  targetClasses.forEach((cls) => {
     const startRow = wsDataTKB_Class.length;
     wsDataTKB_Class.push([`LỚP: ${cls}`]);
     mergesC.push({ s: { r: startRow, c: 0 }, e: { r: startRow, c: DAYS.length } });
@@ -275,7 +282,7 @@ export const exportScheduleToExcel = async (
     wsDataTKB_Class.push(['Tiết / Thứ', ...DAYS]);
     
     // Cột của lớp này trong sheet 'TKB Lớp'
-    const clsColLetter = XLSX.utils.encode_col(2 + CLASSES.indexOf(cls));
+    const clsColLetter = XLSX.utils.encode_col(2 + targetClasses.indexOf(cls));
 
     PERIODS.forEach((period, pIdx) => {
       const isRowValid = DAYS.some((_, dIdx) => isValidSlot(dIdx, pIdx, constraints));
@@ -406,7 +413,7 @@ export const exportScheduleToExcel = async (
   const wsDataClass: any[][] = [
     ['STT', 'Lớp', 'Tổng tiết/tuần', 'Số môn học', 'Ghi chú']
   ];
-  CLASSES.forEach((cls, idx) => {
+  targetClasses.forEach((cls, idx) => {
     let total = 0;
     const subjects = new Set<string>();
     if (schedule[cls]) {
@@ -468,7 +475,7 @@ export const exportScheduleToExcel = async (
   const classDropdownOptions: Record<string, string[]> = {};
   let maxDropdownRows = allTeachers.length;
 
-  CLASSES.forEach(cls => {
+  targetClasses.forEach(cls => {
     const classAssignments = rawData.filter(r => r.className === cls);
     const options = [
       ...Array.from(new Set(classAssignments.map(r => `${r.subject} (${r.teacher})`))),
@@ -484,7 +491,7 @@ export const exportScheduleToExcel = async (
 
   const wsDataDropdown: (string)[][] = [];
   const headerRowDropdown: string[] = ['Tất Cả Giáo Viên', ''];
-  CLASSES.forEach(cls => headerRowDropdown.push(`Lớp ${cls}`));
+  targetClasses.forEach(cls => headerRowDropdown.push(`Lớp ${cls}`));
   wsDataDropdown.push(headerRowDropdown);
 
   for (let r = 0; r < maxDropdownRows; r++) {
@@ -492,7 +499,7 @@ export const exportScheduleToExcel = async (
       allTeachers[r] || '',
       ''
     ];
-    CLASSES.forEach(cls => {
+    targetClasses.forEach(cls => {
       row.push(classDropdownOptions[cls]?.[r] || '');
     });
     wsDataDropdown.push(row);
@@ -501,7 +508,7 @@ export const exportScheduleToExcel = async (
   const wsDropdown = XLSX.utils.aoa_to_sheet(wsDataDropdown);
   applySheetStyles(wsDropdown);
   const wscolsDropdown = [{ wch: 20 }, { wch: 5 }];
-  CLASSES.forEach(() => wscolsDropdown.push({ wch: 22 }));
+  targetClasses.forEach(() => wscolsDropdown.push({ wch: 22 }));
   wsDropdown['!cols'] = wscolsDropdown;
   XLSX.utils.book_append_sheet(wb, wsDropdown, "Danh Mục Chọn");
 
@@ -547,12 +554,12 @@ export const exportScheduleToExcel = async (
       const cfXml1 = `<conditionalFormatting sqref="${cfSqref}"><cfRule type="expression" dxfId="0" priority="1"><formula>${cfFormula1}</formula></cfRule></conditionalFormatting>`;
 
       // 5. Áp dụng Data Validation (Danh sách chọn thả xuống Dropdown List) cho từng cột Lớp trong Sheet 1 ("TKB Lớp"):
-      const dvTags = CLASSES.map((cls, idx) => {
+      const dvTags = targetClasses.map((cls, idx) => {
         const colLetter = XLSX.utils.encode_col(2 + idx);
         const endRow = 1 + (classDropdownOptions[cls]?.length || 1);
         return `<dataValidation type="list" allowBlank="1" showInputMessage="1" showErrorMessage="1" sqref="${colLetter}2:${colLetter}${maxTkbRow}"><formula1>&apos;Danh Mục Chọn&apos;!$${colLetter}$2:$${colLetter}$${endRow}</formula1></dataValidation>`;
       }).join('');
-      const dvXml = `<dataValidations count="${CLASSES.length}">${dvTags}</dataValidations>`;
+      const dvXml = `<dataValidations count="${targetClasses.length}">${dvTags}</dataValidations>`;
 
       const combinedSheet1Xml = cfXml1 + dvXml;
       sheet1Xml = insertBeforeSchemaTags(sheet1Xml, combinedSheet1Xml);

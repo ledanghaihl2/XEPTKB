@@ -8,9 +8,10 @@ interface Props {
   shift?: ShiftType;
   onShiftChange?: (shift: ShiftType) => void;
   constraints?: Constraint[];
+  classes?: string[];
 }
 
-const ClassTimetable: React.FC<Props> = ({ schedule, onEditCell, shift, onShiftChange, constraints }) => {
+const ClassTimetable: React.FC<Props> = ({ schedule, onEditCell, shift, onShiftChange, constraints, classes }) => {
   const [selectedClass, setSelectedClass] = useState<string>('Tất cả');
   const [internalShift, setInternalShift] = useState<ShiftType>('ALL');
   const currentShift = shift ?? internalShift;
@@ -42,7 +43,10 @@ const ClassTimetable: React.FC<Props> = ({ schedule, onEditCell, shift, onShiftC
     setEditingCell(null);
   };
 
-  const displayClasses = selectedClass === 'Tất cả' ? CLASSES : [selectedClass];
+  const availableClasses = classes && classes.length > 0 ? classes : (
+    Object.keys(schedule).length > 0 ? Object.keys(schedule).sort((a, b) => a.localeCompare(b, 'vi', { numeric: true })) : CLASSES
+  );
+  const displayClasses = selectedClass === 'Tất cả' ? availableClasses : [selectedClass];
 
   return (
     <div className="space-y-8">
@@ -85,7 +89,7 @@ const ClassTimetable: React.FC<Props> = ({ schedule, onEditCell, shift, onShiftC
               onChange={(e) => setSelectedClass(e.target.value)}
             >
               <option value="Tất cả">-- Tất cả các lớp --</option>
-              {CLASSES.map(cls => (
+              {availableClasses.map(cls => (
                 <option key={cls} value={cls}>{cls}</option>
               ))}
             </select>
@@ -93,7 +97,7 @@ const ClassTimetable: React.FC<Props> = ({ schedule, onEditCell, shift, onShiftC
         </div>
       </div>
 
-      {CLASSES.length === 0 && (
+      {availableClasses.length === 0 && (
         <div className="bg-white p-8 text-center text-gray-500 rounded-lg shadow">
           Chưa có dữ liệu lớp học.
         </div>

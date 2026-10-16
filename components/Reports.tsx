@@ -5,9 +5,10 @@ import { CLASSES, DAYS, PERIODS } from '../constants';
 interface Props {
   rawData: InputRow[];
   schedule: TimetableGrid;
+  classes?: string[];
 }
 
-const Reports: React.FC<Props> = ({ rawData, schedule }) => {
+const Reports: React.FC<Props> = ({ rawData, schedule, classes }) => {
   // Helper for generating Table 1: Teacher Stats
   const generateTeacherStats = () => {
     const stats: Record<string, { subjects: Set<string>, totalSessions: number, classes: Set<string> }> = {};
@@ -33,7 +34,10 @@ const Reports: React.FC<Props> = ({ rawData, schedule }) => {
 
   // Helper for Table 2: Class Stats
   const generateClassStats = () => {
-    return CLASSES.map((cls, idx) => {
+    const targetClasses = classes && classes.length > 0 ? classes : (
+      Object.keys(schedule).length > 0 ? Object.keys(schedule).sort((a,b) => a.localeCompare(b, 'vi', {numeric: true})) : CLASSES
+    );
+    return targetClasses.map((cls, idx) => {
       let total = 0;
       const subjects = new Set<string>();
       

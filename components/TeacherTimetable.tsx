@@ -7,9 +7,10 @@ interface Props {
   shift?: ShiftType;
   onShiftChange?: (shift: ShiftType) => void;
   constraints?: Constraint[];
+  classes?: string[];
 }
 
-const TeacherTimetable: React.FC<Props> = ({ schedule, shift, onShiftChange, constraints }) => {
+const TeacherTimetable: React.FC<Props> = ({ schedule, shift, onShiftChange, constraints, classes }) => {
   const [selectedTeacher, setSelectedTeacher] = useState<string>('Tất cả');
   const [internalShift, setInternalShift] = useState<ShiftType>('ALL');
   const currentShift = shift ?? internalShift;
@@ -22,10 +23,16 @@ const TeacherTimetable: React.FC<Props> = ({ schedule, shift, onShiftChange, con
     }
   };
 
+  const scanClasses = useMemo(() => {
+    return classes && classes.length > 0 ? classes : (
+      Object.keys(schedule).length > 0 ? Object.keys(schedule) : CLASSES
+    );
+  }, [classes, schedule]);
+
   // Trích xuất danh sách giáo viên duy nhất từ thời khóa biểu (đã trim và chuẩn hóa)
   const allTeachers = useMemo(() => {
     const teacherMap = new Map<string, string>();
-    CLASSES.forEach(cls => {
+    scanClasses.forEach(cls => {
       DAYS.forEach((_, dIdx) => {
         PERIODS.forEach((_, pIdx) => {
           const session = schedule[cls]?.[dIdx]?.[pIdx];
@@ -131,7 +138,7 @@ const TeacherTimetable: React.FC<Props> = ({ schedule, shift, onShiftChange, con
                     }
 
                     const matchedSessions: { class: string; subject: string }[] = [];
-                    for (const cls of CLASSES) {
+                    for (const cls of scanClasses) {
                       const session = schedule[cls]?.[dIdx]?.[pIdx];
                       if (session && session.teacher && session.teacher.trim().toLowerCase() === teacher.trim().toLowerCase()) {
                         matchedSessions.push({ class: cls, subject: session.subject });
