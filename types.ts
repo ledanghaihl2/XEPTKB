@@ -17,16 +17,34 @@ export type TimetableGrid = {
   [className: string]: (ClassSession | null)[][]; // [Day][Period - 1]
 };
 
+export interface BottleneckStats {
+  crossDaySwapsCount: number;
+  crossDayConflictDensity: number; // Tỷ lệ % (0-100)
+  totalAssignedSlots: number;
+  highPressureTeachers: Array<{
+    teacher: string;
+    totalSessions: number;
+    morningLoad: number;
+    crossDayInvolvements: number;
+    assignedClasses: string[];
+    pressureScore: number;
+  }>;
+  suggestsAiIntervention: boolean;
+}
+
+export interface OptimizationMetrics {
+  teacherGaps: number;
+  initialGaps?: number;
+  studentGaps: number;
+  optimizationTimeMs: number;
+  bottleneckStats?: BottleneckStats;
+}
+
 export interface ScheduleResult {
   timetable: TimetableGrid;
   unassigned: InputRow[];
   success: boolean;
-  metrics?: {
-    teacherGaps: number;
-    initialGaps?: number;
-    studentGaps: number;
-    optimizationTimeMs: number;
-  };
+  metrics?: OptimizationMetrics;
 }
 
 export interface GenerateScheduleOptions {

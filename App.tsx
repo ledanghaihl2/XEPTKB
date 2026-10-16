@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
-import { InputRow, TimetableGrid, ScheduleResult, Constraint, TimetableVersion, ShiftType } from './types';
+import { InputRow, TimetableGrid, ScheduleResult, Constraint, TimetableVersion, ShiftType, OptimizationMetrics } from './types';
 import { SAMPLE_DATA, SHIFT_OPTIONS, STORAGE_KEY_ALLOW_CROSS_DAY_SWAP } from './constants';
 import { generateSchedule } from './services/schedulerEngine';
 import { exportScheduleToExcel } from './services/excelExporter';
@@ -103,15 +103,12 @@ function App() {
   const [showVersionModal, setShowVersionModal] = useState(false);
   const [showSupabaseModal, setShowSupabaseModal] = useState(false);
   const [showGeminiModal, setShowGeminiModal] = useState(false);
+  const [geminiInitialTab, setGeminiInitialTab] = useState<'analyze' | 'nlp' | 'settings' | 'bottleneck'>('analyze');
+  const [dismissedBottleneck, setDismissedBottleneck] = useState(false);
   const [isHasSupabase, setIsHasSupabase] = useState<boolean>(() => isSupabaseConfigured());
   const [isHasGemini, setIsHasGemini] = useState<boolean>(() => isGeminiConfigured());
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
-  const [optimizationMetrics, setOptimizationMetrics] = useState<{
-    teacherGaps: number;
-    initialGaps?: number;
-    studentGaps: number;
-    optimizationTimeMs: number;
-  } | null>(null);
+  const [optimizationMetrics, setOptimizationMetrics] = useState<OptimizationMetrics | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // State quản lý Bật/Tắt Hoán đổi liên ngày khi kẹt cứng (Cross-day Teacher Swapping)
@@ -461,7 +458,7 @@ function App() {
                   </span>
                 )}
                 {isHasGemini && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-purple-500/25 text-purple-200 border border-purple-400/30" title={`Google AI Studio (${getGeminiModel()}) sẵn sàng`}>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-500/25 text-indigo-200 border border-indigo-400/30" title={`Google AI Studio (${getGeminiModel()}) sẵn sàng`}>
                     ✨ Gemini AI
                   </span>
                 )}
@@ -472,8 +469,11 @@ function App() {
           
           <div className="flex items-center gap-2 flex-wrap justify-center">
              <button 
-              onClick={() => setShowGeminiModal(true)}
-              className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-purple-600 via-indigo-600 to-teal-600 hover:from-purple-700 hover:to-teal-700 text-white rounded shadow-md transition-all text-sm font-bold border border-white/20 animate-pulse hover:animate-none"
+              onClick={() => {
+                setGeminiInitialTab('analyze');
+                setShowGeminiModal(true);
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-blue-700 via-indigo-600 to-teal-600 hover:from-blue-800 hover:to-teal-700 text-white rounded shadow-md transition-all text-sm font-bold border border-white/20 animate-pulse hover:animate-none cursor-pointer"
               title="Mở Trợ lý AI Gemini 2.5 Pro (Cố vấn sư phạm, gỡ rối xung đột & bóc tách ngôn ngữ)"
             >
               <span className="text-base">✨</span>
@@ -652,6 +652,56 @@ function App() {
                 <p className="text-sm text-red-700">
                   <span className="font-bold">Cảnh báo:</span> Có {unassigned.length} tiết chưa thể xếp do xung đột lịch biểu (Giáo viên bận hoặc Lớp kín lịch).
                 </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Banner Cảnh báo Điểm nghẽn Xung đột Liên ngày của AI Gemini (Proactive Bottleneck Alert Banner) */}
+        {optimizationMetrics?.bottleneckStats?.suggestsAiIntervention && !dismissedBottleneck && (
+          <div className="mb-6 p-4 rounded-xl border border-amber-300 bg-gradient-to-r from-amber-500/10 via-teal-500/10 to-emerald-500/10 shadow-sm print:hidden animate-fadeIn">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-100 border border-amber-300 flex items-center justify-center text-xl shrink-0 shadow-2xs">
+                  ⚠️
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-extrabold text-sm text-amber-950">
+                      Cảnh báo Điểm nghẽn Lịch: Mật độ xung đột liên ngày cao ({optimizationMetrics.bottleneckStats.crossDayConflictDensity}%)
+                    </span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-amber-200 text-amber-900 border border-amber-300">
+                      Cần điều phối chuyên môn
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-700 mt-1 leading-relaxed">
+                    Hệ thống đã phải thực hiện <strong>{optimizationMetrics.bottleneckStats.crossDaySwapsCount} lượt hoán đổi liên ngày</strong> để giải cứu ô Tiết 1 do một số giáo viên bị dồn quá nhiều tiết ca sáng. 
+                    Trợ lý AI Gemini 2.5 Pro đã sẵn sàng phân tích nguyên nhân gốc rễ và lập bảng đề xuất điều phối lại chuyên môn!
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGeminiInitialTab('bottleneck');
+                    setShowGeminiModal(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 active:scale-95 text-white text-xs font-bold shadow-md shadow-teal-700/20 transition-all cursor-pointer"
+                  title="Mở Cố vấn AI Gemini để xem phân tích và đề xuất điều phối chuyên môn"
+                >
+                  <span>✨</span>
+                  <span>Xem Cố vấn AI</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDismissedBottleneck(true)}
+                  className="px-2.5 py-2 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-600 hover:text-slate-800 text-xs font-bold transition-colors cursor-pointer"
+                  title="Tạm ẩn cảnh báo cho phiên làm việc này"
+                >
+                  Bỏ qua
+                </button>
               </div>
             </div>
           </div>
@@ -907,6 +957,8 @@ function App() {
         existingSubjects={uniqueSubjects}
         onApplyParsedData={handleApplyParsedData}
         onApiKeyUpdated={() => setIsHasGemini(isGeminiConfigured())}
+        bottleneckStats={optimizationMetrics?.bottleneckStats}
+        initialTab={geminiInitialTab}
       />
     </div>
   );

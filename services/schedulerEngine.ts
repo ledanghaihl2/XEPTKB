@@ -1,4 +1,4 @@
-import { InputRow, TimetableGrid, ScheduleResult, Constraint, ShiftType, ClassSession, GenerateScheduleOptions } from '../types';
+import { InputRow, TimetableGrid, ScheduleResult, Constraint, ShiftType, ClassSession, GenerateScheduleOptions, BottleneckStats, OptimizationMetrics } from '../types';
 import { DAYS, PERIODS, CLASSES, isValidSlot, isPeriodInShift } from '../constants';
 
 // Nhóm các môn học trọng tâm (ưu tiên học vào các tiết sáng đầu buổi)
@@ -998,7 +998,8 @@ function applyCrossDaySwappingNetwork(
   targetClasses: string[],
   teacherBusySet: Set<string>,
   fixedSlots: Set<string>,
-  classRuleMap?: Map<string, ClassShiftRule>
+  classRuleMap?: Map<string, ClassShiftRule>,
+  involvedTeachersTracker?: Map<string, number>
 ): number {
   let totalCrossDayApplied = 0;
 
@@ -1154,6 +1155,11 @@ function applyCrossDaySwappingNetwork(
 
                 if (paretoValid) {
                   totalCrossDayApplied++;
+                  if (involvedTeachersTracker) {
+                    involvedTeachers.forEach(t => {
+                      involvedTeachersTracker.set(t, (involvedTeachersTracker.get(t) || 0) + 1);
+                    });
+                  }
                   solved = true;
                   break;
                 } else {
@@ -1286,6 +1292,11 @@ function applyCrossDaySwappingNetwork(
 
                 if (paretoValid) {
                   totalCrossDayApplied++;
+                  if (involvedTeachersTracker) {
+                    involvedTeachers.forEach(t => {
+                      involvedTeachersTracker.set(t, (involvedTeachersTracker.get(t) || 0) + 1);
+                    });
+                  }
                   solved = true;
                   break;
                 } else {
@@ -1439,6 +1450,11 @@ function applyCrossDaySwappingNetwork(
 
                 if (paretoValid) {
                   totalCrossDayApplied++;
+                  if (involvedTeachersTracker) {
+                    involvedTeachers.forEach(t => {
+                      involvedTeachersTracker.set(t, (involvedTeachersTracker.get(t) || 0) + 1);
+                    });
+                  }
                   solved = true;
                   break;
                 } else {
@@ -1567,6 +1583,11 @@ function applyCrossDaySwappingNetwork(
 
                 if (paretoValid) {
                   totalCrossDayApplied++;
+                  if (involvedTeachersTracker) {
+                    involvedTeachers.forEach(t => {
+                      involvedTeachersTracker.set(t, (involvedTeachersTracker.get(t) || 0) + 1);
+                    });
+                  }
                   solved = true;
                   break;
                 } else {
@@ -1596,8 +1617,9 @@ function compactAndHealClassGaps(
   fixedSlots: Set<string>,
   classRuleMap?: Map<string, ClassShiftRule>,
   targetClasses?: string[],
-  allowCrossDaySwapping = false
-): void {
+  allowCrossDaySwapping = false,
+  crossDayTracker?: Map<string, number>
+): number {
   const classesToRun = targetClasses && targetClasses.length > 0
     ? targetClasses
     : (Object.keys(grid).length > 0 ? Object.keys(grid) : CLASSES);
@@ -1657,8 +1679,9 @@ function compactAndHealClassGaps(
   applyTeacherPairingSwappingNetwork(grid, classesToRun, teacherBusySet, fixedSlots, 5);
 
   // VÒNG 3: Hoán đổi liên ngày khi kẹt cứng (Cross-day Teacher Swapping Network)
+  let totalCrossDaySwaps = 0;
   if (allowCrossDaySwapping) {
-    applyCrossDaySwappingNetwork(grid, classesToRun, teacherBusySet, fixedSlots, classRuleMap);
+    totalCrossDaySwaps = applyCrossDaySwappingNetwork(grid, classesToRun, teacherBusySet, fixedSlots, classRuleMap, crossDayTracker);
   }
 
   // VÒNG 4: Dồn bổ sung cho các lớp nếu các vị trí mới đã được giải phóng
@@ -1709,6 +1732,8 @@ function compactAndHealClassGaps(
       }
     }
   }
+
+  return totalCrossDaySwaps;
 }
 
 /**
@@ -2157,8 +2182,9 @@ function optimizeWithSimulatedAnnealing(
   maxIterations = 5000,
   classRuleMap?: Map<string, ClassShiftRule>,
   targetClasses?: string[],
-  allowCrossDaySwapping = false
-): TimetableGrid {
+  allowCrossDaySwapping = false,
+  crossDayTracker?: Map<string, number>
+): { grid: TimetableGrid; crossDaySwapsCount: number } {
   const classesList = targetClasses && targetClasses.length > 0
     ? targetClasses
     : (Object.keys(initialGrid).length > 0 ? Object.keys(initialGrid) : CLASSES);
@@ -2286,9 +2312,100 @@ function optimizeWithSimulatedAnnealing(
     temperature *= coolingRate;
   }
 
-  compactAndHealClassGaps(bestGrid, teacherBusySet, fixedSlots, classRuleMap, classesList, allowCrossDaySwapping);
+  const crossDaySwapsCount = compactAndHealClassGaps(bestGrid, teacherBusySet, fixedSlots, classRuleMap, classesList, allowCrossDaySwapping, crossDayTracker);
 
-  return bestGrid;
+  return { grid: bestGrid, crossDaySwapsCount };
+}
+
+/**
+ * Phân tích và tính toán các chỉ số Điểm nghẽn Xung đột Liên ngày (Cross-day Bottleneck Statistics):
+ * Đo lường mức độ kẹt lịch, tỷ lệ hoán đổi liên ngày và xác định các giáo viên đang gánh tải bất đối xứng.
+ */
+export function computeBottleneckStats(
+  grid: TimetableGrid,
+  data: InputRow[],
+  targetClasses: string[],
+  crossDaySwapsCount: number,
+  crossDayInvolvedTeachers: Map<string, number>
+): BottleneckStats {
+  let totalAssignedSlots = 0;
+  for (const cls of targetClasses) {
+    for (let d = 0; d < DAYS.length; d++) {
+      for (let p = 0; p < PERIODS.length; p++) {
+        if (grid[cls]?.[d]?.[p]) totalAssignedSlots++;
+      }
+    }
+  }
+
+  // Thống kê phân công theo giáo viên
+  const teacherMap = new Map<string, { totalSessions: number; morningLoad: number; assignedClasses: Set<string> }>();
+  for (const row of data) {
+    if (!teacherMap.has(row.teacher)) {
+      teacherMap.set(row.teacher, { totalSessions: 0, morningLoad: 0, assignedClasses: new Set() });
+    }
+    const stat = teacherMap.get(row.teacher)!;
+    stat.totalSessions += row.sessionsPerWeek;
+    stat.assignedClasses.add(row.className);
+  }
+
+  // Tính số tiết buổi sáng thực tế từ bảng TKB
+  for (const cls of targetClasses) {
+    for (let d = 0; d < DAYS.length; d++) {
+      for (let p = 0; p < 5; p++) {
+        const sess = grid[cls]?.[d]?.[p];
+        if (sess) {
+          const stat = teacherMap.get(sess.teacher);
+          if (stat) stat.morningLoad++;
+        }
+      }
+    }
+  }
+
+  const highPressureTeachers: Array<{
+    teacher: string;
+    totalSessions: number;
+    morningLoad: number;
+    crossDayInvolvements: number;
+    assignedClasses: string[];
+    pressureScore: number;
+  }> = [];
+
+  teacherMap.forEach((stat, teacher) => {
+    const involvements = crossDayInvolvedTeachers.get(teacher) || 0;
+    const classCount = stat.assignedClasses.size;
+    const morningRatio = stat.totalSessions > 0 ? stat.morningLoad / stat.totalSessions : 0;
+
+    // Áp lực chuyên môn được tính dựa trên: số tiết sáng, số lớp phụ trách, mức độ dồn ca sáng và số lần kẹt liên ngày
+    const pressureScore = Math.round(
+      (stat.morningLoad * 2.5) + (classCount * 3.0) + (involvements * 12.0) + (morningRatio * 20.0)
+    );
+
+    highPressureTeachers.push({
+      teacher,
+      totalSessions: stat.totalSessions,
+      morningLoad: stat.morningLoad,
+      crossDayInvolvements: involvements,
+      assignedClasses: Array.from(stat.assignedClasses).sort(),
+      pressureScore
+    });
+  });
+
+  highPressureTeachers.sort((a, b) => b.pressureScore - a.pressureScore);
+
+  const crossDayConflictDensity = totalAssignedSlots > 0
+    ? Math.round((crossDaySwapsCount / totalAssignedSlots) * 1000) / 10
+    : 0;
+
+  // Ngưỡng kích hoạt cảnh báo AI: Mật độ xung đột liên ngày >= 10% HOẶC có từ >= 4 tiết phải hoán đổi liên ngày
+  const suggestsAiIntervention = crossDayConflictDensity >= 10.0 || crossDaySwapsCount >= 4;
+
+  return {
+    crossDaySwapsCount,
+    crossDayConflictDensity,
+    totalAssignedSlots,
+    highPressureTeachers: highPressureTeachers.slice(0, 5),
+    suggestsAiIntervention
+  };
 }
 
 /**
@@ -2322,13 +2439,31 @@ export const generateSchedule = (
   const initialMetrics = evaluateScheduleQuality(initial.grid, allTeachers, targetClasses);
 
   // Bước 2: Tối ưu hóa sâu bằng Simulated Annealing (triệt tiêu tiết trống, ghép tiết đôi, cân đối sư phạm)
-  const optimizedGrid = optimizeWithSimulatedAnnealing(initial.grid, constraints, 5000, initial.classRuleMap, targetClasses, allowCrossDaySwapping);
+  const crossDayTracker = new Map<string, number>();
+  const { grid: optimizedGrid, crossDaySwapsCount } = optimizeWithSimulatedAnnealing(
+    initial.grid,
+    constraints,
+    5000,
+    initial.classRuleMap,
+    targetClasses,
+    allowCrossDaySwapping,
+    crossDayTracker
+  );
   const finalMetrics = evaluateScheduleQuality(optimizedGrid, allTeachers, targetClasses);
   const timeMs = Date.now() - startTime;
+
+  const bottleneckStats = computeBottleneckStats(
+    optimizedGrid,
+    data,
+    targetClasses,
+    crossDaySwapsCount,
+    crossDayTracker
+  );
 
   console.log(`⚡ Xếp TKB tối ưu hoàn tất trong ${timeMs}ms:`);
   console.log(`- Tiết trống giáo viên: giảm từ ${initialMetrics.teacherGaps} xuống còn ${finalMetrics.teacherGaps}`);
   console.log(`- Tiết lủng học sinh: ${finalMetrics.studentGaps}`);
+  console.log(`- Hoán đổi liên ngày: ${crossDaySwapsCount} tiết (Mật độ: ${bottleneckStats.crossDayConflictDensity}%)`);
 
   return {
     timetable: optimizedGrid,
@@ -2338,7 +2473,8 @@ export const generateSchedule = (
       initialGaps: initialMetrics.teacherGaps,
       teacherGaps: finalMetrics.teacherGaps,
       studentGaps: finalMetrics.studentGaps,
-      optimizationTimeMs: timeMs
+      optimizationTimeMs: timeMs,
+      bottleneckStats
     }
   };
 };

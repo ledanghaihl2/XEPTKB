@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { InputRow, Constraint, TimetableGrid } from '../types';
+import { InputRow, Constraint, TimetableGrid, BottleneckStats } from '../types';
 import {
   getGeminiApiKey,
   setGeminiApiKey,
@@ -9,6 +9,7 @@ import {
   testGeminiApiKey,
   analyzeScheduleWithGemini,
   parseNaturalLanguageToSchedule,
+  analyzeCrossDayBottlenecksWithGemini,
   ParsedScheduleData,
   DEFAULT_GEMINI_MODEL
 } from '../services/geminiService';
@@ -25,6 +26,8 @@ interface GeminiAssistantModalProps {
   existingSubjects: string[];
   onApplyParsedData: (newAssignments: InputRow[], newConstraints: Constraint[]) => void;
   onApiKeyUpdated: () => void;
+  bottleneckStats?: BottleneckStats | null;
+  initialTab?: 'analyze' | 'nlp' | 'settings' | 'bottleneck';
 }
 
 export const GeminiAssistantModal: React.FC<GeminiAssistantModalProps> = ({
@@ -38,9 +41,11 @@ export const GeminiAssistantModal: React.FC<GeminiAssistantModalProps> = ({
   existingClasses,
   existingSubjects,
   onApplyParsedData,
-  onApiKeyUpdated
+  onApiKeyUpdated,
+  bottleneckStats,
+  initialTab
 }) => {
-  const [activeTab, setActiveTab] = useState<'analyze' | 'nlp' | 'settings'>('analyze');
+  const [activeTab, setActiveTab] = useState<'analyze' | 'nlp' | 'settings' | 'bottleneck'>(initialTab || 'analyze');
 
   // Settings State
   const [apiKey, setApiKey] = useState('');
@@ -60,6 +65,11 @@ export const GeminiAssistantModal: React.FC<GeminiAssistantModalProps> = ({
   const [parsedData, setParsedData] = useState<ParsedScheduleData | null>(null);
   const [nlpError, setNlpError] = useState<string>('');
 
+  // Bottleneck Advisor State
+  const [isAnalyzingBottleneck, setIsAnalyzingBottleneck] = useState(false);
+  const [bottleneckResult, setBottleneckResult] = useState<string>('');
+  const [bottleneckError, setBottleneckError] = useState<string>('');
+
   useEffect(() => {
     if (isOpen) {
       setApiKey(getGeminiApiKey());
@@ -67,13 +77,46 @@ export const GeminiAssistantModal: React.FC<GeminiAssistantModalProps> = ({
       setTestStatus(null);
       setAnalyzeError('');
       setNlpError('');
+      setBottleneckError('');
       
-      // Auto-switch to settings tab if key not configured
-      if (!isGeminiConfigured()) {
+      if (initialTab) {
+        setActiveTab(initialTab);
+      } else if (!isGeminiConfigured()) {
         setActiveTab('settings');
       }
     }
-  }, [isOpen]);
+  }, [isOpen, initialTab]);
+
+  // Handle Bottleneck Analysis
+  const handleRunBottleneckAnalysis = async () => {
+    if (!isGeminiConfigured()) {
+      setActiveTab('settings');
+      return;
+    }
+    if (!bottleneckStats) {
+      setBottleneckError('Chưa có số liệu thống kê điểm nghẽn. Thầy/Cô vui lòng chạy thuật toán xếp TKB trước.');
+      return;
+    }
+
+    setIsAnalyzingBottleneck(true);
+    setBottleneckError('');
+    setBottleneckResult('');
+
+    try {
+      const result = await analyzeCrossDayBottlenecksWithGemini({
+        timetable,
+        unassigned,
+        constraints,
+        rawData,
+        bottleneckStats
+      });
+      setBottleneckResult(result);
+    } catch (err: any) {
+      setBottleneckError(err.message || 'Lỗi khi phân tích điểm nghẽn liên ngày.');
+    } finally {
+      setIsAnalyzingBottleneck(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -251,6 +294,29 @@ export const GeminiAssistantModal: React.FC<GeminiAssistantModalProps> = ({
           </button>
 
           <button
+            onClick={() => setActiveTab('bottleneck')}
+            className={`py-3 px-4 font-semibold text-sm border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'bottleneck'
+                ? 'border-teal-600 text-teal-800 bg-white rounded-t-lg shadow-sm'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <span>🎯</span>
+            Cố Vấn Điểm Nghẽn
+            {bottleneckStats?.suggestsAiIntervention ? (
+              <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-black bg-amber-200 text-amber-900 border border-amber-300 animate-pulse">
+                {bottleneckStats.crossDayConflictDensity}%
+              </span>
+            ) : (
+              bottleneckStats && bottleneckStats.crossDaySwapsCount > 0 && (
+                <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-teal-100 text-teal-800">
+                  {bottleneckStats.crossDaySwapsCount}t
+                </span>
+              )
+            )}
+          </button>
+
+          <button
             onClick={() => setActiveTab('nlp')}
             className={`py-3 px-4 font-semibold text-sm border-b-2 flex items-center gap-2 transition-all ${
               activeTab === 'nlp'
@@ -369,6 +435,176 @@ export const GeminiAssistantModal: React.FC<GeminiAssistantModalProps> = ({
                     <div className="text-3xl mb-2">💡</div>
                     <p className="font-medium text-sm">Chưa có kết quả phân tích nào.</p>
                     <p className="text-xs text-gray-400 mt-1">Bấm nút "Phân Tích & Gỡ Rối Ngay" ở trên để AI thẩm định chuyên môn thời khóa biểu.</p>
+                  </div>
+                )
+              )}
+            </div>
+          )}
+
+          {/* TAB: CỐ VẤN ĐIỂM NGHẼN LIÊN NGÀY (CROSS-DAY BOTTLENECK ADVISOR) */}
+          {activeTab === 'bottleneck' && (
+            <div className="space-y-5">
+              {/* Status Header Banner */}
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center p-4 rounded-xl border bg-gradient-to-r from-slate-50 to-teal-50/50 border-teal-200 gap-3">
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-gray-800 text-sm">Hiện trạng Mật độ Xung đột Liên ngày:</span>
+                    {bottleneckStats?.suggestsAiIntervention ? (
+                      <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
+                        <span>⚠️</span> Mật độ cao ({bottleneckStats.crossDayConflictDensity}% - {bottleneckStats.crossDaySwapsCount} tiết hoán đổi)
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                        <span>✅</span> Mật độ an toàn ({bottleneckStats?.crossDayConflictDensity || 0}%)
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-600 mt-1">
+                    Hệ thống theo dõi các lượt hoán đổi liên ngày cần thiết để giải cứu Tiết 1 và phát hiện các giáo viên đang gánh tải bất đối xứng.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={handleRunBottleneckAnalysis}
+                    disabled={isAnalyzingBottleneck}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    {isAnalyzingBottleneck ? (
+                      <>
+                        <span className="animate-spin text-sm">⏳</span>
+                        <span>Đang phân tích chuyên môn...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>✨</span>
+                        <span>AI Gemini Phân Tích & Gợi Ý Điều Phối</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* 3 Metric Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                    <span>🔄</span>
+                    <span>Tiết giải cứu liên ngày</span>
+                  </div>
+                  <div className="text-xl font-extrabold text-slate-800">
+                    {bottleneckStats?.crossDaySwapsCount || 0} <span className="text-xs font-semibold text-slate-500">tiết</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    Số tiết phải luân chuyển qua ngày khác để lấp đầy Tiết 1
+                  </p>
+                </div>
+
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                    <span>📊</span>
+                    <span>Mật độ xung đột liên ngày</span>
+                  </div>
+                  <div className={`text-xl font-extrabold ${
+                    (bottleneckStats?.crossDayConflictDensity || 0) >= 10 ? 'text-amber-800' : 'text-teal-800'
+                  }`}>
+                    {bottleneckStats?.crossDayConflictDensity || 0}%
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    {(bottleneckStats?.crossDayConflictDensity || 0) >= 10 
+                      ? '⚠️ Vượt ngưỡng 10%, khuyến nghị điều phối lại chuyên môn' 
+                      : '✓ Nằm trong ngưỡng an toàn bình thường'}
+                  </p>
+                </div>
+
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                    <span>👥</span>
+                    <span>Giáo viên tải nặng ca sáng</span>
+                  </div>
+                  <div className="text-xl font-extrabold text-slate-800">
+                    {bottleneckStats?.highPressureTeachers?.length || 0} <span className="text-xs font-semibold text-slate-500">thầy/cô</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    Giáo viên dạy dồn $\ge 15$ tiết sáng hoặc $\ge 4$ lớp
+                  </p>
+                </div>
+              </div>
+
+              {/* Danh sách giáo viên điểm nghẽn trọng điểm */}
+              {bottleneckStats?.highPressureTeachers && bottleneckStats.highPressureTeachers.length > 0 && (
+                <div className="p-3.5 bg-amber-50/60 rounded-xl border border-amber-200 space-y-2">
+                  <div className="text-xs font-black text-amber-950 uppercase tracking-wider flex items-center gap-1.5">
+                    <span>⚠️</span>
+                    <span>Top giáo viên có áp lực lịch cao nhất (Điểm nghẽn tiềm năng):</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {bottleneckStats.highPressureTeachers.map((t, idx) => (
+                      <div key={idx} className="bg-white px-2.5 py-1.5 rounded-lg border border-amber-300 text-xs text-slate-800 shadow-2xs flex items-center gap-2">
+                        <span className="font-extrabold text-amber-950">#{idx + 1} {t.teacher}</span>
+                        <span className="text-[11px] text-slate-500 font-mono">
+                          ({t.totalSessions}t tuần | Sáng {t.morningLoad}t | {t.assignedClasses.length} lớp: {t.assignedClasses.join(', ')})
+                        </span>
+                        {t.crossDayInvolvements > 0 && (
+                          <span className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 font-bold text-[10px] border border-amber-300">
+                            {t.crossDayInvolvements} lần kẹt ngày
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Error Alert */}
+              {bottleneckError && (
+                <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-lg text-sm flex items-start gap-2">
+                  <span>❌</span>
+                  <div className="flex-grow">
+                    <p className="font-semibold">Lỗi phân tích:</p>
+                    <p className="text-xs mt-0.5">{bottleneckError}</p>
+                    {bottleneckError.includes('API Key') && (
+                      <button
+                        onClick={() => setActiveTab('settings')}
+                        className="mt-2 text-xs font-bold underline text-teal-700 cursor-pointer"
+                      >
+                        Chuyển đến tab Cấu hình API Key &rarr;
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Analysis Result Output */}
+              {bottleneckResult ? (
+                <div className="bg-white border border-teal-200 rounded-xl p-5 shadow-sm space-y-3">
+                  <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+                    <div className="flex items-center gap-2 text-teal-900 font-bold text-sm">
+                      <span>🤖</span> Đề xuất Điều Phối Chuyên Môn từ Gemini 2.5 Pro:
+                    </div>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(bottleneckResult);
+                        alert('Đã sao chép toàn bộ báo cáo cố vấn của Gemini vào bộ nhớ tạm!');
+                      }}
+                      className="px-2.5 py-1 text-xs bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 rounded-lg transition-colors font-bold cursor-pointer"
+                      title="Sao chép nội dung báo cáo gửi BGH"
+                    >
+                      📋 Sao chép báo cáo gửi BGH
+                    </button>
+                  </div>
+                  <div className="prose prose-sm max-w-none text-gray-800 whitespace-pre-wrap leading-relaxed text-sm bg-slate-50/50 p-4 rounded-lg font-sans">
+                    {bottleneckResult}
+                  </div>
+                </div>
+              ) : (
+                !isAnalyzingBottleneck && (
+                  <div className="text-center py-12 bg-gray-50 rounded-xl border border-dashed border-gray-200 text-gray-500">
+                    <div className="text-3xl mb-2">🎯</div>
+                    <p className="font-medium text-sm">Chưa có báo cáo điều phối chuyên môn nào.</p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Bấm nút "AI Gemini Phân Tích & Gợi Ý Điều Phối" ở trên để AI thẩm định sâu nguyên nhân nghẽn lịch và đề xuất hoán chuyển lớp tối ưu.
+                    </p>
                   </div>
                 )
               )}

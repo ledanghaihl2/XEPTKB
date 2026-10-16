@@ -1,4 +1,4 @@
-import { InputRow, Constraint, TimetableGrid } from '../types';
+import { InputRow, Constraint, TimetableGrid, BottleneckStats } from '../types';
 
 const STORAGE_KEY_GEMINI_KEY = 'GEMINI_API_KEY';
 const STORAGE_KEY_GEMINI_MODEL = 'GEMINI_MODEL';
@@ -242,4 +242,108 @@ export const testGeminiApiKey = async (apiKey: string, model: string): Promise<b
     overrideModel: model
   });
   return Boolean(result && result.trim());
+};
+
+// 4. Cross-day Bottleneck Advisor (Cố vấn Điều phối Phân công Chuyên môn & Giải tỏa Điểm nghẽn Liên ngày)
+export interface BottleneckAnalysisParams {
+  timetable: TimetableGrid;
+  unassigned: InputRow[];
+  constraints: Constraint[];
+  rawData: InputRow[];
+  bottleneckStats: BottleneckStats;
+}
+
+export const analyzeCrossDayBottlenecksWithGemini = async ({
+  timetable,
+  unassigned,
+  constraints,
+  rawData,
+  bottleneckStats
+}: BottleneckAnalysisParams): Promise<string> => {
+  const systemInstruction = `Bạn là Chuyên gia Cố vấn Phân công Chuyên môn & Tối ưu hóa Thời khóa biểu Cấp cao tại Việt Nam.
+Nhiệm vụ của bạn là chẩn đoán sâu tình trạng "Nghẽn Lịch Liên Ngày" (Cross-day Bottleneck) khi trường học phải sử dụng cơ chế hoán đổi liên ngày quá nhiều để giải cứu ô Tiết 1.
+Bạn cần chỉ ra các giáo viên đang gánh tải bất đối xứng (quá nhiều lớp, quá nhiều tiết sáng) và lập Bảng Đề xuất Điều phối Chuyên môn cụ thể (chuyển lớp giữa các giáo viên cùng bộ môn, chuyển ca) mang tính khả thi cao nhất cho Ban Giám Hiệu.
+Quy tắc:
+- Ngôn ngữ: Tiếng Việt, văn phong trang trọng, chuẩn mực sư phạm, dùng các icon sinh động, dễ đọc.
+- Bắt buộc có Bảng đề xuất chi tiết gồm: Lớp, Môn, Giáo viên hiện tại, Giáo viên đề xuất nhận thay, Số tiết, Lý do.
+- Đảm bảo tính khả thi thực tế của trường học phổ thông tại Việt Nam.`;
+
+  // Nhóm giáo viên theo bộ môn để tìm người cùng môn có thể chia sẻ tải
+  const subjectTeachersMap = new Map<string, Array<{ teacher: string; sessions: number; classes: string[] }>>();
+  const teacherStatsMap = new Map<string, { totalSessions: number; subjects: Set<string>; classes: Set<string> }>();
+
+  rawData.forEach(row => {
+    if (!teacherStatsMap.has(row.teacher)) {
+      teacherStatsMap.set(row.teacher, { totalSessions: 0, subjects: new Set(), classes: new Set() });
+    }
+    const tStat = teacherStatsMap.get(row.teacher)!;
+    tStat.totalSessions += row.sessionsPerWeek;
+    tStat.subjects.add(row.subject);
+    tStat.classes.add(row.className);
+  });
+
+  rawData.forEach(row => {
+    if (!subjectTeachersMap.has(row.subject)) {
+      subjectTeachersMap.set(row.subject, []);
+    }
+    const list = subjectTeachersMap.get(row.subject)!;
+    let entry = list.find(e => e.teacher === row.teacher);
+    if (!entry) {
+      entry = { teacher: row.teacher, sessions: 0, classes: [] };
+      list.push(entry);
+    }
+    entry.sessions += row.sessionsPerWeek;
+    if (!entry.classes.includes(row.className)) {
+      entry.classes.push(row.className);
+    }
+  });
+
+  // Xây dựng tóm tắt so sánh các tổ bộ môn có giáo viên trong top quá tải
+  const topTeachers = bottleneckStats.highPressureTeachers || [];
+  const topTeacherNames = new Set(topTeachers.map(t => t.teacher));
+
+  const peerComparisonSummary: string[] = [];
+  subjectTeachersMap.forEach((teachers, subject) => {
+    const hasPressureTeacher = teachers.some(t => topTeacherNames.has(t.teacher));
+    if (hasPressureTeacher && teachers.length > 1) {
+      const peerList = teachers
+        .map(t => `${t.teacher} (${t.sessions}t/${t.classes.length} lớp: ${t.classes.join(',')})`)
+        .join(' vs ');
+      peerComparisonSummary.push(`- Môn ${subject}: ${peerList}`);
+    }
+  });
+
+  const prompt = `Dưới đây là Báo cáo Định lượng Xung đột Lịch của nhà trường:
+1. Tổng số lớp: ${Object.keys(timetable).length} lớp
+2. Tổng số tiết đã xếp: ${bottleneckStats.totalAssignedSlots} tiết
+3. MẬT ĐỘ XUNG ĐỘT LIÊN NGÀY: ${bottleneckStats.crossDayConflictDensity}% (${bottleneckStats.crossDaySwapsCount} tiết phải hoán đổi ngày để cứu Tiết 1)
+4. Tiết chưa thể xếp (Unassigned): ${unassigned.length} tiết
+
+5. DANH SÁCH GIÁO VIÊN ĐANG LÀ NÚT THẮT CỔ CHAI (Top Bottleneck Teachers):
+${topTeachers.map((t, idx) => `  ${idx + 1}. Thầy/Cô ${t.teacher}: Tổng ${t.totalSessions} tiết/tuần | Dồn ca sáng: ${t.morningLoad} tiết | Phụ trách ${t.assignedClasses.length} lớp (${t.assignedClasses.join(', ')}) | Bị kẹt/hoán đổi ngày: ${t.crossDayInvolvements} lần`).join('\n')}
+
+6. SO SÁNH NĂNG ĐỊNH CÁC GIÁO VIÊN CÙNG TỔ CHUYÊN MÔN:
+${peerComparisonSummary.length > 0 ? peerComparisonSummary.join('\n') : 'Chưa có đủ dữ liệu so sánh cùng bộ môn'}
+
+Hãy đưa ra BÁO CÁO CỐ VẤN ĐIỀU PHỐI CHUYÊN MÔN gồm 4 phần:
+### 1. 🔍 Chẩn đoán Nguyên nhân Gốc rễ Gây Nghẽn Lịch
+Phân tích tại sao mật độ xung đột liên ngày lại cao (Do giáo viên nào đang phải gánh tải quá tập trung ở ca sáng? Lớp nào bị ảnh hưởng nặng nhất?).
+
+### 2. 📋 Đề xuất Phương án Điều phối Chuyên môn Cụ thể (Actionable Reassignments)
+Lập bảng biểu rõ ràng:
+| STT | Lớp | Môn | Giáo viên hiện tại (Quá tải) | Giáo viên đề xuất nhận thay | Số tiết/tuần | Phân tích lý do & Lợi ích |
+(Lưu ý: Chỉ đề xuất đổi giữa các giáo viên có chuyên môn phù hợp, ưu tiên chuyển bớt lớp từ người có tải ca sáng cao sang người có tải nhẹ hơn).
+
+### 3. ⚖️ Đánh giá Cân bằng Sư phạm & Tác động Dự kiến
+- Dự kiến giảm mật độ xung đột liên ngày như thế nào?
+- Tiết 1 của học sinh sẽ được vào học đúng giờ ra sao?
+- Sự công bằng và giảm áp lực kiệt sức (burnout) cho giáo viên.
+
+### 4. 💡 Khuyến nghị Thực thi Nhanh cho Ban Giám Hiệu
+Các bước trao đổi trong tổ bộ môn và cập nhật lại phân công để thời khóa biểu tự động thông thoáng nhất.`;
+
+  return await callGeminiApi({
+    prompt,
+    systemInstruction
+  });
 };
