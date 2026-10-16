@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { TimetableGrid as TimetableGridType, ShiftType, Constraint } from '../types';
 import { DAYS, PERIODS, CLASSES, isSlotValidForClass, SHIFT_OPTIONS, isPeriodInShift } from '../constants';
+import { getTargetClassesForConstraint } from '../services/schedulerEngine';
 
 interface Props {
   schedule: TimetableGridType;
@@ -9,9 +10,26 @@ interface Props {
   onShiftChange?: (shift: ShiftType) => void;
   constraints?: Constraint[];
   classes?: string[];
+  onTogglePin?: (
+    className: string, 
+    day: number, 
+    period: number, 
+    action: 'PIN' | 'UNPIN', 
+    scope?: 'CLASS' | 'ALL', 
+    subject?: string, 
+    teacher?: string
+  ) => void;
 }
 
-const ClassTimetable: React.FC<Props> = ({ schedule, onEditCell, shift, onShiftChange, constraints, classes }) => {
+const ClassTimetable: React.FC<Props> = ({ 
+  schedule, 
+  onEditCell, 
+  shift, 
+  onShiftChange, 
+  constraints, 
+  classes,
+  onTogglePin
+}) => {
   const [selectedClass, setSelectedClass] = useState<string>('Tất cả');
   const [internalShift, setInternalShift] = useState<ShiftType>('ALL');
   const currentShift = shift ?? internalShift;
@@ -178,64 +196,201 @@ const ClassTimetable: React.FC<Props> = ({ schedule, onEditCell, shift, onShiftC
       ))}
 
       {/* Modal Chỉnh sửa tiết học khi xem TKB từng lớp */}
-      {editingCell && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 print:hidden">
-          <div className="bg-white rounded-lg shadow-xl w-[400px] overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-              <h3 className="text-lg font-medium text-gray-900">
-                Chỉnh sửa: Lớp {editingCell.cls} - Thứ {editingCell.dayIdx + 2} - Tiết {editingCell.periodIdx + 1}
-              </h3>
-              <button 
-                onClick={() => setEditingCell(null)}
-                className="text-gray-400 hover:text-gray-500"
-              >
-                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
-              <p className="text-sm text-gray-500 mb-4">Để xóa tiết học này, hãy để trống Môn học.</p>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Môn học</label>
-                <input
-                  type="text"
-                  value={editSubject}
-                  onChange={(e) => setEditSubject(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
-                  placeholder="Ví dụ: Toán, Ngữ Văn..."
-                />
+      {editingCell && (() => {
+        const matchingFixed = constraints?.filter(c => {
+          if (c.type !== 'FIXED_SESSION') return false;
+          if (c.day !== editingCell.dayIdx || c.period !== editingCell.periodIdx) return false;
+          const targetClasses = getTargetClassesForConstraint(c.className, allClasses);
+          return targetClasses.includes(editingCell.cls);
+        }) || [];
+        const isCurrentlyFixed = matchingFixed.length > 0;
+        const isSchoolWide = matchingFixed.some(c => !c.className || c.className === 'ALL' || c.className === 'ALL_CLASSES' || c.className === 'TOAN_TRUONG');
+        const isGradeWide = matchingFixed.some(c => c.className?.startsWith('KHOI_') || c.className?.startsWith('GRADE_'));
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 print:hidden p-4">
+            <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden border border-gray-100">
+              <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
+                <div>
+                  <h3 className="text-base font-bold text-gray-900">
+                    Chỉnh sửa tiết học
+                  </h3>
+                  <p className="text-xs text-gray-500 font-medium">
+                    Lớp <span className="font-bold text-teal-700">{editingCell.cls}</span> &bull; {DAYS[editingCell.dayIdx]} &bull; {PERIODS[editingCell.periodIdx]}
+                  </p>
+                </div>
+                <button 
+                  onClick={() => setEditingCell(null)}
+                  className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Giáo viên</label>
-                <input
-                  type="text"
-                  value={editTeacher}
-                  onChange={(e) => setEditTeacher(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
-                  placeholder="Tên giáo viên"
-                />
+
+              <div className="p-6 space-y-4">
+                {/* Trạng thái Ghim cố định */}
+                {isCurrentlyFixed ? (
+                  <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-xs">
+                    <div className="flex items-center gap-1.5 font-bold mb-1">
+                      <span>📌</span>
+                      <span>Tiết học này đang được KHÓA CỐ ĐỊNH!</span>
+                    </div>
+                    <p className="text-amber-700 leading-relaxed mb-3">
+                      {isSchoolWide ? 'Phạm vi: Cố định toàn trường (Chào cờ, Sinh hoạt lớp...)' : isGradeWide ? 'Phạm vi: Cố định theo khối' : `Phạm vi: Cố định riêng Lớp ${editingCell.cls}`}
+                    </p>
+                    
+                    {/* Các nút bấm bỏ ghim ngay trong modal */}
+                    <div className="flex flex-wrap gap-2">
+                      {isSchoolWide ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onTogglePin?.(editingCell.cls, editingCell.dayIdx, editingCell.periodIdx, 'UNPIN', 'ALL');
+                              setEditingCell(null);
+                            }}
+                            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-md text-xs font-semibold shadow-xs flex items-center gap-1 transition-colors"
+                          >
+                            🔓 Bỏ ghim TOÀN TRƯỜNG tiết này
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onTogglePin?.(editingCell.cls, editingCell.dayIdx, editingCell.periodIdx, 'UNPIN', 'CLASS');
+                              setEditingCell(null);
+                            }}
+                            className="px-3 py-1.5 bg-white border border-red-300 hover:bg-red-50 text-red-700 rounded-md text-xs font-semibold shadow-xs flex items-center gap-1 transition-colors"
+                          >
+                            🔓 Chỉ bỏ ghim riêng Lớp {editingCell.cls}
+                          </button>
+                        </>
+                      ) : isGradeWide ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onTogglePin?.(editingCell.cls, editingCell.dayIdx, editingCell.periodIdx, 'UNPIN', 'ALL');
+                              setEditingCell(null);
+                            }}
+                            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-md text-xs font-semibold shadow-xs flex items-center gap-1 transition-colors"
+                          >
+                            🔓 Bỏ ghim TOÀN KHỐI tiết này
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onTogglePin?.(editingCell.cls, editingCell.dayIdx, editingCell.periodIdx, 'UNPIN', 'CLASS');
+                              setEditingCell(null);
+                            }}
+                            className="px-3 py-1.5 bg-white border border-red-300 hover:bg-red-50 text-red-700 rounded-md text-xs font-semibold shadow-xs flex items-center gap-1 transition-colors"
+                          >
+                            🔓 Chỉ bỏ ghim riêng Lớp {editingCell.cls}
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onTogglePin?.(editingCell.cls, editingCell.dayIdx, editingCell.periodIdx, 'UNPIN', 'CLASS');
+                            setEditingCell(null);
+                          }}
+                          className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-md text-xs font-semibold shadow-xs flex items-center gap-1 transition-colors"
+                        >
+                          🔓 Bỏ ghim tiết cố định này (Giải phóng ô)
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-600">
+                    <span>Ô này hiện là tiết tự do.</span>
+                    <div className="flex gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onTogglePin?.(editingCell.cls, editingCell.dayIdx, editingCell.periodIdx, 'PIN', 'CLASS', editSubject, editTeacher);
+                          setEditingCell(null);
+                        }}
+                        className="px-2.5 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded text-xs font-medium flex items-center gap-1 transition-colors"
+                      >
+                        📌 Ghim riêng lớp
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onTogglePin?.(editingCell.cls, editingCell.dayIdx, editingCell.periodIdx, 'PIN', 'ALL', editSubject, editTeacher);
+                          setEditingCell(null);
+                        }}
+                        className="px-2.5 py-1 bg-teal-700 hover:bg-teal-800 text-white rounded text-xs font-medium flex items-center gap-1 transition-colors"
+                      >
+                        🏫 Ghim toàn trường
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Môn học</label>
+                  <input
+                    type="text"
+                    value={editSubject}
+                    onChange={(e) => setEditSubject(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                    placeholder="Ví dụ: Toán, Ngữ Văn, HĐTN..."
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1">Để trống môn học để xóa tiết học này khỏi ô.</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Giáo viên phụ trách</label>
+                  <input
+                    type="text"
+                    value={editTeacher}
+                    onChange={(e) => setEditTeacher(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                    placeholder="Tên giáo viên hoặc để trống"
+                  />
+                </div>
               </div>
-            </div>
-            <div className="px-6 py-3 bg-gray-50 text-right flex justify-end gap-3 rounded-b-lg">
-              <button
-                type="button"
-                className="px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
-                onClick={() => setEditingCell(null)}
-              >
-                Hủy
-              </button>
-              <button
-                type="button"
-                className="px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
-                onClick={handleSave}
-              >
-                Lưu thay đổi
-              </button>
+
+              <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 flex justify-between items-center rounded-b-xl">
+                <div>
+                  {editSubject && (
+                    <button
+                      type="button"
+                      className="text-xs text-red-600 hover:text-red-700 font-medium hover:underline"
+                      onClick={() => {
+                        setEditSubject('');
+                        setEditTeacher('');
+                      }}
+                    >
+                      Xóa trắng ô
+                    </button>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className="px-4 py-2 border border-gray-300 shadow-xs text-xs font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+                    onClick={() => setEditingCell(null)}
+                  >
+                    Đóng
+                  </button>
+                  <button
+                    type="button"
+                    className="px-4 py-2 text-xs font-semibold rounded-lg text-white bg-teal-600 hover:bg-teal-700 shadow-xs transition-colors"
+                    onClick={handleSave}
+                  >
+                    Lưu thay đổi
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };

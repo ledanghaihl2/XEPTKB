@@ -319,6 +319,57 @@ const ConstraintsEditor: React.FC<Props> = ({
     }
   };
 
+  // Gỡ bỏ nhanh các tiết cố định (Ví dụ Tiết 1 sáng Thứ 6, hoặc tất cả tiết cố định Thứ 6)
+  const handleRemoveQuickFixedPresets = (actionType: 'FRIDAY_PERIOD_1' | 'ALL_FRIDAY' | 'ALL_FIXED') => {
+    let removedCount = 0;
+    if (onUpdateConstraints) {
+      onUpdateConstraints(prev => {
+        const filtered = prev.filter(c => {
+          if (c.type !== 'FIXED_SESSION') return true;
+          if (actionType === 'FRIDAY_PERIOD_1' && c.day === 4 && c.period === 0) {
+            removedCount++;
+            return false;
+          }
+          if (actionType === 'ALL_FRIDAY' && c.day === 4) {
+            removedCount++;
+            return false;
+          }
+          if (actionType === 'ALL_FIXED') {
+            removedCount++;
+            return false;
+          }
+          return true;
+        });
+        return filtered;
+      });
+    } else {
+      constraints.forEach(c => {
+        if (c.type !== 'FIXED_SESSION') return;
+        if (actionType === 'FRIDAY_PERIOD_1' && c.day === 4 && c.period === 0) {
+          onRemove(c.id);
+          removedCount++;
+        } else if (actionType === 'ALL_FRIDAY' && c.day === 4) {
+          onRemove(c.id);
+          removedCount++;
+        } else if (actionType === 'ALL_FIXED') {
+          onRemove(c.id);
+          removedCount++;
+        }
+      });
+    }
+
+    const actionText = actionType === 'FRIDAY_PERIOD_1' 
+      ? 'Tiết 1 Sáng Thứ 6' 
+      : actionType === 'ALL_FRIDAY' 
+      ? 'Tất cả tiết cố định Thứ 6' 
+      : 'Toàn bộ tiết cố định trong trường';
+    setSuccessMessage(`✅ Đã gỡ bỏ thành công: ${actionText}! Thời khóa biểu đã được cập nhật đồng bộ.`);
+    setTimeout(() => setSuccessMessage(''), 7000);
+    if (onRegenerateSchedule) {
+      onRegenerateSchedule();
+    }
+  };
+
   const handleAdd = () => {
     if ((type === 'TEACHER_BUSY' || type === 'TEACHER_SHIFT') && !selectedTeacher) return;
     if (type === 'FIXED_SESSION' && (!selectedClass || !selectedSubject)) {
@@ -654,6 +705,53 @@ const ConstraintsEditor: React.FC<Props> = ({
                   <span>🌟</span>
                   <span>Áp dụng cả 2 tiết mẫu (T1 T2 & {fridayPeriodLabel})</span>
                 </button>
+              </div>
+
+              {/* Công cụ gỡ bỏ nhanh tiết cố định */}
+              <div className="mt-3.5 pt-3 border-t border-teal-200/80">
+                <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                  <span className="text-xs font-bold text-teal-950 flex items-center gap-1">
+                    <span>⚡</span> Gỡ bỏ nhanh tiết cố định (1 chạm):
+                  </span>
+                  {constraints.filter(c => c.type === 'FIXED_SESSION' && c.day === 4).length > 0 && (
+                    <span className="text-[11px] font-semibold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">
+                      Có {constraints.filter(c => c.type === 'FIXED_SESSION' && c.day === 4).length} tiết cố định Thứ 6
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveQuickFixedPresets('FRIDAY_PERIOD_1')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-red-50 text-red-700 border border-red-300 rounded-lg text-xs font-semibold shadow-2xs transition-all active:scale-95"
+                    title="Gỡ bỏ ràng buộc tiết cố định tại Tiết 1 Sáng Thứ 6"
+                  >
+                    <span>🔓</span>
+                    <span>Bỏ ghim Tiết 1 Sáng Thứ 6</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveQuickFixedPresets('ALL_FRIDAY')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-red-50 text-red-700 border border-red-300 rounded-lg text-xs font-semibold shadow-2xs transition-all active:scale-95"
+                    title="Gỡ bỏ tất cả các tiết cố định trong ngày Thứ 6"
+                  >
+                    <span>🔓</span>
+                    <span>Bỏ ghim tất cả tiết Thứ 6</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm('Thầy/Cô có chắc chắn muốn xóa TOÀN BỘ tiết cố định trong trường không?')) {
+                        handleRemoveQuickFixedPresets('ALL_FIXED');
+                      }
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 rounded-lg text-xs font-semibold shadow-2xs transition-all active:scale-95"
+                    title="Gỡ bỏ toàn bộ tất cả tiết cố định đã thiết lập"
+                  >
+                    <span>🗑️</span>
+                    <span>Xóa toàn bộ tiết cố định</span>
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -1225,7 +1323,13 @@ const ConstraintsEditor: React.FC<Props> = ({
                   <span className="text-gray-900 text-sm font-semibold">{getConstraintDescription(c)}</span>
                 </div>
                 <button 
-                  onClick={() => onRemove(c.id)}
+                  onClick={() => {
+                    const desc = getConstraintDescription(c);
+                    onRemove(c.id);
+                    setSuccessMessage(`✅ Đã xóa ràng buộc "${desc}"! Thời khóa biểu đã được cập nhật đồng bộ.`);
+                    setTimeout(() => setSuccessMessage(''), 5000);
+                    onRegenerateSchedule?.();
+                  }}
                   className="text-gray-400 hover:text-red-600 transition-colors p-1.5 rounded-lg hover:bg-red-50"
                   title="Xóa ràng buộc này"
                 >

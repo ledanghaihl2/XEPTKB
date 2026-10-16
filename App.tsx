@@ -3,7 +3,7 @@ import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { InputRow, TimetableGrid, ScheduleResult, Constraint, TimetableVersion, ShiftType, OptimizationMetrics, ExcelImportResult } from './types';
 import { SAMPLE_DATA, SHIFT_OPTIONS, STORAGE_KEY_ALLOW_CROSS_DAY_SWAP, CLASSES } from './constants';
-import { generateSchedule } from './services/schedulerEngine';
+import { generateSchedule, getTargetClassesForConstraint } from './services/schedulerEngine';
 import { exportScheduleToExcel } from './services/excelExporter';
 import { parseExcelData } from './services/excelImporter';
 import { mergeAssignments, mergeSchedules } from './utils/mergeAssignments';
@@ -337,11 +337,12 @@ function App() {
   const uniqueClasses = dynamicClasses;
   const uniqueSubjects = dynamicSubjects;
 
-  const handleGenerate = (currentData = data) => {
+  const handleGenerate = (currentData = data, customConstraints?: Constraint[]) => {
+    const activeConstraints = customConstraints || constraints;
     setIsGenerating(true);
     // Timeout to allow UI to render loading state
     setTimeout(() => {
-      const result: ScheduleResult = generateSchedule(currentData, constraints, { allowCrossDaySwapping });
+      const result: ScheduleResult = generateSchedule(currentData, activeConstraints, { allowCrossDaySwapping });
       setSchedule(result.timetable);
       setUnassigned(result.unassigned);
       if (result.metrics) {
@@ -379,16 +380,182 @@ function App() {
 
   const handleAddConstraint = (c: Omit<Constraint, 'id'>) => {
     const newConstraint: Constraint = { ...c, id: Math.random().toString(36).substr(2, 9) };
-    setConstraints(prev => [...prev, newConstraint]);
+    setConstraints(prev => {
+      const updated = [...prev, newConstraint];
+      try {
+        localStorage.setItem(STORAGE_KEY_CONSTRAINTS, JSON.stringify(updated));
+        if (isSupabaseConfigured()) {
+          saveConstraintsSupabase(updated);
+        }
+      } catch {}
+      return updated;
+    });
   };
 
-  const handleRemoveConstraint = (id: string) => {
-    setConstraints(prev => prev.filter(c => c.id !== id));
+  const handleRemoveConstraint = (id: string, autoRegenerate: boolean = true) => {
+    const target = constraints.find(c => c.id === id);
+    const updated = constraints.filter(c => c.id !== id);
+    setConstraints(updated);
+    try {
+      localStorage.setItem(STORAGE_KEY_CONSTRAINTS, JSON.stringify(updated));
+      if (isSupabaseConfigured()) {
+        saveConstraintsSupabase(updated);
+      }
+    } catch {}
+
+    // Nếu ràng buộc bị xóa là FIXED_SESSION, dọn dẹp các ô trên schedule và xếp lại ngay
+    if (target && target.type === 'FIXED_SESSION' && target.day !== undefined && target.period !== undefined) {
+      const targetCls = getTargetClassesForConstraint(target.className, dynamicClasses);
+      setSchedule(prev => {
+        const next = { ...prev };
+        targetCls.forEach(cls => {
+          if (next[cls]?.[target.day!]?.[target.period!]) {
+            next[cls] = [...next[cls]];
+            next[cls][target.day!] = [...next[cls][target.day!]];
+            next[cls][target.day!][target.period!] = null;
+          }
+        });
+        return next;
+      });
+    }
+
+    if (autoRegenerate) {
+      handleGenerate(data, updated);
+    }
+  };
+
+  const handleTogglePinCell = (
+    className: string,
+    day: number,
+    period: number,
+    action: 'PIN' | 'UNPIN',
+    scope: 'CLASS' | 'ALL' = 'CLASS',
+    subject?: string,
+    teacher?: string
+  ) => {
+    let nextConstraints: Constraint[] = [];
+
+    if (action === 'UNPIN') {
+      // 1. Lọc bỏ các ràng buộc FIXED_SESSION trùng ngày và tiết ảnh hưởng tới className
+      nextConstraints = constraints.filter(c => {
+        if (c.type !== 'FIXED_SESSION') return true;
+        if (c.day !== day || c.period !== period) return true;
+
+        const isAll = !c.className || c.className === 'ALL' || c.className === 'ALL_CLASSES' || c.className === 'TOAN_TRUONG';
+        const isGrade = c.className?.startsWith('KHOI_') || c.className?.startsWith('GRADE_');
+
+        if (scope === 'ALL') {
+          // Bỏ ghim toàn trường / toàn khối / hoặc bất kỳ constraint nào tại ô này
+          return false;
+        }
+
+        // Scope === 'CLASS': Người dùng chỉ muốn bỏ ghim cho riêng lớp này
+        if (c.className === className) {
+          return false;
+        }
+
+        if (isAll) {
+          // Tách c thành các lớp còn lại bên dưới
+          return false;
+        }
+
+        if (isGrade) {
+          const gradeNum = c.className!.replace(/^(KHOI_|GRADE_)/, '');
+          if (className.startsWith(gradeNum) || className.startsWith(`Lớp ${gradeNum}`)) {
+            return false;
+          }
+        }
+
+        return true;
+      });
+
+      // Nếu unpin riêng lớp từ một ràng buộc ALL hoặc Khối, tạo lại constraints cho các lớp còn lại
+      if (scope === 'CLASS') {
+        const broadConstraints = constraints.filter(c => 
+          c.type === 'FIXED_SESSION' && 
+          c.day === day && 
+          c.period === period &&
+          (!c.className || c.className === 'ALL' || c.className === 'ALL_CLASSES' || c.className === 'TOAN_TRUONG' || c.className?.startsWith('KHOI_') || c.className?.startsWith('GRADE_'))
+        );
+
+        broadConstraints.forEach(bc => {
+          const affectedClasses = getTargetClassesForConstraint(bc.className, dynamicClasses);
+          const remainingClasses = affectedClasses.filter(cls => cls !== className);
+          remainingClasses.forEach(remCls => {
+            nextConstraints.push({
+              id: 'fix_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+              type: 'FIXED_SESSION',
+              className: remCls,
+              subject: bc.subject,
+              teacher: bc.teacher,
+              day: bc.day,
+              period: bc.period
+            });
+          });
+        });
+      }
+
+      // Xóa nội dung phiên học trong schedule tại ô này
+      setSchedule(prev => {
+        const nextSched = { ...prev };
+        if (scope === 'ALL') {
+          dynamicClasses.forEach(cls => {
+            if (nextSched[cls]?.[day]?.[period]) {
+              nextSched[cls] = [...nextSched[cls]];
+              nextSched[cls][day] = [...nextSched[cls][day]];
+              nextSched[cls][day][period] = null;
+            }
+          });
+        } else {
+          if (nextSched[className]?.[day]?.[period]) {
+            nextSched[className] = [...nextSched[className]];
+            nextSched[className][day] = [...nextSched[className][day]];
+            nextSched[className][day][period] = null;
+          }
+        }
+        return nextSched;
+      });
+    } else {
+      // PIN: Thêm tiết cố định
+      const cleanSubj = subject?.trim() || schedule[className]?.[day]?.[period]?.subject || 'HĐTN';
+      const cleanTeach = teacher?.trim() || schedule[className]?.[day]?.[period]?.teacher || '';
+
+      const newFix: Constraint = {
+        id: 'fix_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        type: 'FIXED_SESSION',
+        className: scope === 'ALL' ? 'ALL' : className,
+        subject: cleanSubj,
+        teacher: cleanTeach || undefined,
+        day,
+        period
+      };
+
+      // Lọc bỏ ràng buộc cũ trùng ngày/tiết cho lớp này trước khi thêm
+      nextConstraints = constraints.filter(c => !(c.type === 'FIXED_SESSION' && c.className === newFix.className && c.day === day && c.period === period));
+      nextConstraints.push(newFix);
+    }
+
+    setConstraints(nextConstraints);
+    try {
+      localStorage.setItem(STORAGE_KEY_CONSTRAINTS, JSON.stringify(nextConstraints));
+      if (isSupabaseConfigured()) {
+        saveConstraintsSupabase(nextConstraints);
+      }
+    } catch {}
+
+    // Tự động xếp lại thời khóa biểu với danh sách ràng buộc mới
+    handleGenerate(data, nextConstraints);
   };
 
   const handleUpdateConstraints = (updater: Constraint[] | ((prev: Constraint[]) => Constraint[])) => {
     setConstraints(prev => {
       const next = typeof updater === 'function' ? updater(prev) : updater;
+      try {
+        localStorage.setItem(STORAGE_KEY_CONSTRAINTS, JSON.stringify(next));
+        if (isSupabaseConfigured()) {
+          saveConstraintsSupabase(next);
+        }
+      } catch {}
       return next;
     });
   };
@@ -941,15 +1108,16 @@ function App() {
                 onShiftChange={setSelectedShift}
                 constraints={constraints}
                 classes={dynamicClasses}
+                onTogglePin={handleTogglePinCell}
                 onEditCell={(className, day, period, subject, teacher) => {
+                  const cleanSubject = subject ? subject.trim() : '';
+                  const cleanTeacher = teacher ? teacher.trim() : '';
+
                   setSchedule(prev => {
                     const newSchedule = { ...prev };
                     newSchedule[className] = [...prev[className]];
                     newSchedule[className][day] = [...prev[className][day]];
                     
-                    const cleanSubject = subject ? subject.trim() : '';
-                    const cleanTeacher = teacher ? teacher.trim() : '';
-
                     if (!cleanSubject) {
                       newSchedule[className][day][period] = null;
                     } else {
@@ -959,6 +1127,19 @@ function App() {
                     }
                     return newSchedule;
                   });
+
+                  // Nếu để trống môn học trên ô đang bị ghim cố định, tự động gỡ ghim luôn
+                  if (!cleanSubject) {
+                    const hasFixed = constraints.some(c => 
+                      c.type === 'FIXED_SESSION' && 
+                      c.day === day && 
+                      c.period === period &&
+                      getTargetClassesForConstraint(c.className, dynamicClasses).includes(className)
+                    );
+                    if (hasFixed) {
+                      handleTogglePinCell(className, day, period, 'UNPIN', 'CLASS');
+                    }
+                  }
                 }}
               />
             </div>
@@ -984,15 +1165,16 @@ function App() {
                 onShiftChange={setSelectedShift}
                 constraints={constraints}
                 classes={dynamicClasses}
+                onTogglePin={handleTogglePinCell}
                 onEditCell={(className, day, period, subject, teacher) => {
+                  const cleanSubject = subject ? subject.trim() : '';
+                  const cleanTeacher = teacher ? teacher.trim() : '';
+
                   setSchedule(prev => {
                     const newSchedule = { ...prev };
                     newSchedule[className] = [...prev[className]];
                     newSchedule[className][day] = [...prev[className][day]];
                     
-                    const cleanSubject = subject ? subject.trim() : '';
-                    const cleanTeacher = teacher ? teacher.trim() : '';
-
                     if (!cleanSubject) {
                       newSchedule[className][day][period] = null;
                     } else {
@@ -1002,6 +1184,19 @@ function App() {
                     }
                     return newSchedule;
                   });
+
+                  // Nếu để trống môn học trên ô đang bị ghim cố định, tự động gỡ ghim luôn
+                  if (!cleanSubject) {
+                    const hasFixed = constraints.some(c => 
+                      c.type === 'FIXED_SESSION' && 
+                      c.day === day && 
+                      c.period === period &&
+                      getTargetClassesForConstraint(c.className, dynamicClasses).includes(className)
+                    );
+                    if (hasFixed) {
+                      handleTogglePinCell(className, day, period, 'UNPIN', 'CLASS');
+                    }
+                  }
                 }}
               />
             </div>
