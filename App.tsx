@@ -393,7 +393,12 @@ function App() {
         if (result.conflicts && result.conflicts.length > 0) {
           const conflictPreview = result.conflicts.slice(0, 4).join('\n• ');
           const extra = result.conflicts.length > 4 ? `\n... và ${result.conflicts.length - 4} vị trí trùng khác.` : '';
-          alert(`✅ Đã nhập thành công Thời khóa biểu từ Excel!\n📊 Tổng cộng: ${result.data.length} nhóm môn học được tự động tính toán và đồng bộ.\n\n⚠️ CẢNH BÁO TRÙNG LỊCH GIÁO VIÊN (${result.conflicts.length} tiết):\n• ${conflictPreview}${extra}\n\nThầy/Cô vui lòng kiểm tra và điều chỉnh các tiết bị trùng.${autoSaveNote}`);
+          const shouldAutoFix = window.confirm(
+            `✅ Đã nhập Thời khóa biểu từ Excel!\n📊 Tổng cộng: ${result.data.length} nhóm môn học được đồng bộ.\n\n⚠️ CẢNH BÁO TRÙNG LỊCH GIÁO VIÊN (${result.conflicts.length} tiết):\n• ${conflictPreview}${extra}\n\nThầy/Cô có muốn hệ thống TỰ ĐỘNG XẾP LẠI NGAY để khử sạch 100% các tiết trùng này không?`
+          );
+          if (shouldAutoFix) {
+            handleGenerate(result.data);
+          }
         } else {
           alert(`✅ Đã nhập thành công toàn bộ Thời khóa biểu đã chỉnh sửa từ Excel!\n📊 Tổng cộng: ${result.data.length} phân công chuyên môn đã được tự động tính toán và đồng bộ vào hệ thống.${autoSaveNote}`);
         }
@@ -812,6 +817,13 @@ function App() {
                     </span>
                     <span className="bg-emerald-100/90 text-emerald-800 px-2.5 py-0.5 rounded-full font-semibold border border-emerald-200/80">
                       Tiết lủng học sinh: {optimizationMetrics.studentGaps}
+                    </span>
+                    <span className={`px-2.5 py-0.5 rounded-full font-semibold border ${
+                      (optimizationMetrics.teacherCollisions ?? 0) === 0
+                        ? 'bg-emerald-100/90 text-emerald-800 border-emerald-300'
+                        : 'bg-amber-100 text-amber-900 border-amber-300'
+                    }`}>
+                      🛡️ Trùng tiết giáo viên: {optimizationMetrics.teacherCollisions ?? 0} {(optimizationMetrics.teacherCollisions ?? 0) === 0 ? '(0 lỗi)' : '(Cần xử lý)'}
                     </span>
                     <span className="bg-blue-100/90 text-blue-800 px-2.5 py-0.5 rounded-full font-semibold border border-blue-200/80">
                       Ưu tiên môn chính buổi sáng & ghép tiết đôi

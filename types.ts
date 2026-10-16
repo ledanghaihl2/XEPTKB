@@ -36,6 +36,7 @@ export interface OptimizationMetrics {
   teacherGaps: number;
   initialGaps?: number;
   studentGaps: number;
+  teacherCollisions?: number; // Số tiết trùng giáo viên (Mục tiêu bắt buộc = 0)
   optimizationTimeMs: number;
   bottleneckStats?: BottleneckStats;
 }

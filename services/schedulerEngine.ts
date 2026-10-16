@@ -91,14 +91,61 @@ export function evaluateScheduleQuality(grid: TimetableGrid, allTeachers: string
 }
 
 /**
+ * Đếm số lượng xung đột trùng tiết giáo viên trên toàn bộ ma trận thời khóa biểu.
+ * (Ràng buộc cứng Hard Constraint số 1: Một giáo viên không thể dạy 2 lớp ở cùng 1 tiết)
+ */
+export function countGlobalTeacherCollisions(
+  grid: TimetableGrid,
+  classes?: string[]
+): { totalCollisions: number; collisionDetails: string[] } {
+  const targetClasses = classes && classes.length > 0
+    ? classes
+    : (Object.keys(grid).length > 0 ? Object.keys(grid) : CLASSES);
+
+  let totalCollisions = 0;
+  const collisionDetails: string[] = [];
+
+  for (let d = 0; d < DAYS.length; d++) {
+    for (let p = 0; p < PERIODS.length; p++) {
+      const teacherMap = new Map<string, string[]>();
+
+      for (const cls of targetClasses) {
+        const session = grid[cls]?.[d]?.[p];
+        if (session && session.teacher && session.teacher !== 'Chưa phân công') {
+          const t = session.teacher.trim();
+          if (!teacherMap.has(t)) {
+            teacherMap.set(t, []);
+          }
+          teacherMap.get(t)!.push(cls);
+        }
+      }
+
+      teacherMap.forEach((classList, teacher) => {
+        if (classList.length > 1) {
+          totalCollisions += (classList.length - 1);
+          collisionDetails.push(
+            `Giáo viên "${teacher}" dạy trùng cùng lúc ở ${classList.length} lớp (${classList.join(', ')}) vào Thứ ${d + 2}, Tiết ${p + 1}`
+          );
+        }
+      });
+    }
+  }
+
+  return { totalCollisions, collisionDetails };
+}
+
+/**
  * Hàm phạt đa mục tiêu (Multi-objective Penalty Function):
  * Điểm phạt càng thấp thì Thời khóa biểu càng đẹp và tối ưu sư phạm.
  */
 function calculatePenalty(grid: TimetableGrid, unplacedCount = 0, classes?: string[]): number {
-  let penalty = unplacedCount * 100000;
   const targetClasses = classes && classes.length > 0
     ? classes
     : (Object.keys(grid).length > 0 ? Object.keys(grid) : CLASSES);
+
+  // 🛡️ PHẠT CỰC NẶNG CHO BẤT KỲ TIẾT TRÙNG GIÁO VIÊN NÀO (Hard Constraint Penalty)
+  const { totalCollisions } = countGlobalTeacherCollisions(grid, targetClasses);
+  let penalty = unplacedCount * 100000 + totalCollisions * 1000000;
 
   const teacherSchedule: Record<string, Record<number, number[]>> = {};
   const allTeachers = new Set<string>();
@@ -2256,7 +2303,8 @@ function optimizeWithSimulatedAnnealing(
         }
       }
     }
-    if (!conflict) continue;
+    // 🛡️ BẢO VỆ RÀNG BUỘC CỨNG (HARD CONSTRAINT): Nếu CÓ bất kỳ xung đột trùng giáo viên nào thì BỎ QUA NGAY LẬP TỨC!
+    if (conflict) continue;
 
     // Kiểm tra số lượng tiết môn học trong ngày (Toán/Văn tối đa 2, môn khác tối đa 1)
     if (s1) {
@@ -2288,6 +2336,15 @@ function optimizeWithSimulatedAnnealing(
 
     // Tuyệt đối không cho phép tạo khoảng lủng tiết giữa buổi của học sinh
     if (checkClassHasGaps(currentGrid, cls, d1) || checkClassHasGaps(currentGrid, cls, d2)) {
+      currentGrid[cls][d1][p1] = s1;
+      currentGrid[cls][d2][p2] = s2;
+      continue;
+    }
+
+    // 🛡️ BẢO VỆ BẤT BIẾN TUYỆT ĐỐI (ZERO COLLISION INVARIANT GUARD):
+    // Đảm bảo bước hoán đổi này tuyệt đối không tạo ra bất kỳ tiết trùng giáo viên nào trên toàn trường!
+    const { totalCollisions: collisionsNow } = countGlobalTeacherCollisions(currentGrid, classesList);
+    if (collisionsNow > 0) {
       currentGrid[cls][d1][p1] = s1;
       currentGrid[cls][d2][p2] = s2;
       continue;
@@ -2409,6 +2466,137 @@ export function computeBottleneckStats(
 }
 
 /**
+ * Thuật toán Khử trùng tiết khẩn cấp (Emergency Collision Desynchronizer):
+ * Quét toàn bộ lưới sau quá trình tối ưu. Nếu còn bất kỳ giáo viên nào dạy trùng giờ ở >= 2 lớp:
+ * - Với lớp thứ 2 trở đi, tìm kiếm một slot (d_new, p_new) hợp lệ của lớp đó không gây trùng tiết giáo viên và không tạo lỗ lủng.
+ * - Hoán đổi tiết đó sang slot mới.
+ * - Nếu không tìm được slot an toàn nào trong lớp, tách tiết đó ra khỏi lưới và đưa vào danh sách unassigned để thông báo trung thực cho Thầy/Cô,
+ *   TUYỆT ĐỐI KHÔNG ĐỂ LẠI BẤT KỲ TIẾT TRÙNG NÀO TRÊN LƯỚI THỜI KHÓA BIỂU.
+ */
+export function desynchronizeTeacherCollisions(
+  grid: TimetableGrid,
+  targetClasses: string[],
+  teacherBusySet: Set<string>,
+  fixedSlots: Set<string>,
+  classRuleMap?: Map<string, ClassShiftRule>
+): { resolvedCount: number; evictedUnassigned: InputRow[] } {
+  let resolvedCount = 0;
+  const evictedUnassigned: InputRow[] = [];
+  let unassignedIdCounter = 90000;
+
+  for (let d = 0; d < DAYS.length; d++) {
+    for (let p = 0; p < PERIODS.length; p++) {
+      const teacherMap = new Map<string, string[]>();
+
+      for (const cls of targetClasses) {
+        const session = grid[cls]?.[d]?.[p];
+        if (session && session.teacher && session.teacher !== 'Chưa phân công') {
+          const t = session.teacher.trim();
+          if (!teacherMap.has(t)) teacherMap.set(t, []);
+          teacherMap.get(t)!.push(cls);
+        }
+      }
+
+      for (const [teacher, classList] of teacherMap.entries()) {
+        if (classList.length <= 1) continue;
+
+        // Giữ lại lớp đầu tiên (hoặc lớp có tiết cố định FIXED_SESSION)
+        let primaryClass = classList[0];
+        for (const c of classList) {
+          if (fixedSlots.has(`${c}_${d}_${p}`)) {
+            primaryClass = c;
+            break;
+          }
+        }
+
+        // Các lớp còn lại bị trùng: cần tìm slot khác để dời hoặc hoán đổi
+        for (const duplicateClass of classList) {
+          if (duplicateClass === primaryClass) continue;
+
+          const dupSession = grid[duplicateClass][d][p];
+          if (!dupSession) continue;
+
+          let moved = false;
+
+          // Phương án A: Tìm ô trống hoàn toàn trong cùng buổi hoặc khác buổi hợp lệ của duplicateClass
+          for (let d_new = 0; d_new < DAYS.length && !moved; d_new++) {
+            for (let p_new = 0; p_new < PERIODS.length && !moved; p_new++) {
+              if (d_new === d && p_new === p) continue;
+              if (grid[duplicateClass]?.[d_new]?.[p_new] !== null) continue;
+              if (fixedSlots.has(`${duplicateClass}_${d_new}_${p_new}`)) continue;
+              if (!isSlotAllowedForClass(duplicateClass, d_new, p_new, classRuleMap)) continue;
+              if (isTeacherBusyAt(grid, teacher, d_new, p_new, teacherBusySet, duplicateClass, targetClasses)) continue;
+
+              // Thử gỡ ở (d, p) và đặt sang (d_new, p_new)
+              grid[duplicateClass][d][p] = null;
+              grid[duplicateClass][d_new][p_new] = { ...dupSession, day: d_new, period: p_new };
+
+              if (!checkClassHasGaps(grid, duplicateClass, d) && !checkClassHasGaps(grid, duplicateClass, d_new)) {
+                moved = true;
+                resolvedCount++;
+                break;
+              } else {
+                // Hoàn tác
+                grid[duplicateClass][d_new][p_new] = null;
+                grid[duplicateClass][d][p] = dupSession;
+              }
+            }
+          }
+
+          // Phương án B: Thử hoán đổi với một tiết khác trong duplicateClass mà không làm tăng xung đột
+          if (!moved) {
+            for (let d_new = 0; d_new < DAYS.length && !moved; d_new++) {
+              for (let p_new = 0; p_new < PERIODS.length && !moved; p_new++) {
+                if (d_new === d && p_new === p) continue;
+                const otherSess = grid[duplicateClass]?.[d_new]?.[p_new];
+                if (!otherSess) continue;
+                if (fixedSlots.has(`${duplicateClass}_${d_new}_${p_new}`) || fixedSlots.has(`${duplicateClass}_${d}_${p}`)) continue;
+                if (!isSlotAllowedForClass(duplicateClass, d_new, p_new, classRuleMap)) continue;
+                if (!isSlotAllowedForClass(duplicateClass, d, p, classRuleMap)) continue;
+
+                // Kiểm tra teacher có bận ở (d_new, p_new) không
+                if (isTeacherBusyAt(grid, teacher, d_new, p_new, teacherBusySet, duplicateClass, targetClasses)) continue;
+                // Kiểm tra otherSess.teacher có bận ở (d, p) không
+                if (isTeacherBusyAt(grid, otherSess.teacher, d, p, teacherBusySet, duplicateClass, targetClasses)) continue;
+
+                // Thử hoán đổi
+                grid[duplicateClass][d][p] = { ...otherSess, day: d, period: p };
+                grid[duplicateClass][d_new][p_new] = { ...dupSession, day: d_new, period: p_new };
+
+                if (!checkClassHasGaps(grid, duplicateClass, d) && !checkClassHasGaps(grid, duplicateClass, d_new)) {
+                  moved = true;
+                  resolvedCount++;
+                  break;
+                } else {
+                  // Hoàn tác
+                  grid[duplicateClass][d][p] = dupSession;
+                  grid[duplicateClass][d_new][p_new] = otherSess;
+                }
+              }
+            }
+          }
+
+          // Phương án C: Nếu không thể dời an toàn mà không vi phạm, tách tiết này ra ngoài đưa vào unassigned
+          if (!moved) {
+            grid[duplicateClass][d][p] = null;
+            evictedUnassigned.push({
+              id: unassignedIdCounter++,
+              className: duplicateClass,
+              subject: dupSession.subject,
+              teacher: dupSession.teacher,
+              sessionsPerWeek: 1
+            });
+            resolvedCount++;
+          }
+        }
+      }
+    }
+  }
+
+  return { resolvedCount, evictedUnassigned };
+}
+
+/**
  * Thuật toán xếp Thời khóa biểu Tối ưu hóa Toàn diện (Chính thức):
  * Kết hợp Heuristic Monte Carlo + Luyện kim nhân tạo Simulated Annealing
  */
@@ -2449,6 +2637,25 @@ export const generateSchedule = (
     allowCrossDaySwapping,
     crossDayTracker
   );
+
+  // Bước 3: Nghiệm thu toàn diện & Khử trùng tiết khẩn cấp (Emergency Zero-Collision Desynchronizer)
+  const fixedSlots = new Set<string>();
+  constraints.forEach(c => {
+    if (c.type === 'FIXED_SESSION' && c.className && c.day !== undefined && c.period !== undefined) {
+      fixedSlots.add(`${c.className}_${c.day}_${c.period}`);
+    }
+  });
+  const teacherBusySet = buildTeacherBusySet(constraints);
+
+  const { resolvedCount, evictedUnassigned } = desynchronizeTeacherCollisions(
+    optimizedGrid,
+    targetClasses,
+    teacherBusySet,
+    fixedSlots,
+    initial.classRuleMap
+  );
+
+  const finalCollisions = countGlobalTeacherCollisions(optimizedGrid, targetClasses);
   const finalMetrics = evaluateScheduleQuality(optimizedGrid, allTeachers, targetClasses);
   const timeMs = Date.now() - startTime;
 
@@ -2464,15 +2671,17 @@ export const generateSchedule = (
   console.log(`- Tiết trống giáo viên: giảm từ ${initialMetrics.teacherGaps} xuống còn ${finalMetrics.teacherGaps}`);
   console.log(`- Tiết lủng học sinh: ${finalMetrics.studentGaps}`);
   console.log(`- Hoán đổi liên ngày: ${crossDaySwapsCount} tiết (Mật độ: ${bottleneckStats.crossDayConflictDensity}%)`);
+  console.log(`- Trùng tiết giáo viên: ${finalCollisions.totalCollisions} (Đã xử lý giải tỏa: ${resolvedCount})`);
 
   return {
     timetable: optimizedGrid,
-    unassigned: [],
-    success: true,
+    unassigned: evictedUnassigned,
+    success: finalCollisions.totalCollisions === 0 && evictedUnassigned.length === 0,
     metrics: {
       initialGaps: initialMetrics.teacherGaps,
       teacherGaps: finalMetrics.teacherGaps,
       studentGaps: finalMetrics.studentGaps,
+      teacherCollisions: finalCollisions.totalCollisions,
       optimizationTimeMs: timeMs,
       bottleneckStats
     }
