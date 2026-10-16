@@ -106,8 +106,8 @@ export const exportScheduleToExcel = async (
 
       targetClasses.forEach(cls => {
         const session = schedule[cls]?.[dIdx]?.[pIdx];
-        // Combine Subject and Teacher into one cell
-        row.push(session ? `${session.subject}\n(${session.teacher})` : '');
+        // Combine Subject and Teacher into one cell (chuẩn hóa tên giáo viên)
+        row.push(session ? `${session.subject}\n(${session.teacher ? session.teacher.trim() : ''})` : '');
       });
       wsDataTKB.push(row);
     });
@@ -170,22 +170,30 @@ export const exportScheduleToExcel = async (
             return;
         }
 
-        let found = '';
+        const matchedClasses: { cls: string; subject: string }[] = [];
         for (const cls of targetClasses) {
           const session = schedule[cls]?.[dIdx]?.[pIdx];
-          if (session && session.teacher === teacher) {
-             found = `${cls}\n(${session.subject})`;
-             break;
+          if (session && session.teacher && session.teacher.trim().toLowerCase() === teacher.trim().toLowerCase()) {
+             matchedClasses.push({ cls, subject: session.subject });
           }
+        }
+
+        let found = '';
+        if (matchedClasses.length === 1) {
+          found = `${matchedClasses[0].cls}\n(${matchedClasses[0].subject})`;
+        } else if (matchedClasses.length > 1) {
+          found = `⚠️ TRÙNG ${matchedClasses.length} LỚP!`;
         }
 
         const targetRow = slotRowMap[dIdx]?.[pIdx];
         if (targetRow) {
           const rowRange = `'TKB Lớp'!$${firstClassCol}$${targetRow}:$${lastClassCol}$${targetRow}`;
           // Công thức Excel: Dò tìm cột lớp trong dòng tiết tương ứng của 'TKB Lớp' chứa tên giáo viên này.
+          // Sử dụng "*(" & teacher & ")*" để so khớp chính xác tên trong ngoặc đơn (tránh nhầm "Hoa" với "Hoan", "Khoa"...)
           // Tự động kiểm tra nếu giáo viên bị xếp trùng từ 2 lớp trở lên trong cùng 1 tiết sẽ hiện cảnh báo TRÙNG.
-          const conflictCount = `COUNTIF(${rowRange}, "*${teacher}*")`;
-          const baseFormula = `INDEX(${classHeaderRange}, MATCH("*${teacher}*", ${rowRange}, 0)) & CHAR(10) & "(" & TRIM(CLEAN(LEFT(INDEX(${rowRange}, MATCH("*${teacher}*", ${rowRange}, 0)), SEARCH("(", INDEX(${rowRange}, MATCH("*${teacher}*", ${rowRange}, 0)) & "(") - 1))) & ")"`;
+          const matchPattern = `"*(${teacher.trim()})*"`;
+          const conflictCount = `COUNTIF(${rowRange}, ${matchPattern})`;
+          const baseFormula = `INDEX(${classHeaderRange}, MATCH(${matchPattern}, ${rowRange}, 0)) & CHAR(10) & "(" & TRIM(CLEAN(LEFT(INDEX(${rowRange}, MATCH(${matchPattern}, ${rowRange}, 0)), SEARCH("(", INDEX(${rowRange}, MATCH(${matchPattern}, ${rowRange}, 0)) & "(") - 1))) & ")"`;
           const formula = `IF(${conflictCount}=0, "", IF(${conflictCount}>1, "⚠️ TRÙNG " & ${conflictCount} & " LỚP!", ${baseFormula}))`;
 
           row.push({
@@ -379,12 +387,35 @@ export const exportScheduleToExcel = async (
   // --- SHEET 3: THỐNG KÊ GIÁO VIÊN ---
   const statsTeacher: Record<string, { subjects: Set<string>, total: number, classes: Set<string> }> = {};
   rawData.forEach(row => {
-    if (!statsTeacher[row.teacher]) {
-      statsTeacher[row.teacher] = { subjects: new Set(), total: 0, classes: new Set() };
+    const tName = row.teacher ? row.teacher.trim() : '';
+    if (!tName) return;
+    if (!statsTeacher[tName]) {
+      statsTeacher[tName] = { subjects: new Set(), total: 0, classes: new Set() };
     }
-    statsTeacher[row.teacher].subjects.add(row.subject);
-    statsTeacher[row.teacher].total += row.sessionsPerWeek;
-    statsTeacher[row.teacher].classes.add(row.className);
+    statsTeacher[tName].subjects.add(row.subject);
+    statsTeacher[tName].total += row.sessionsPerWeek;
+    statsTeacher[tName].classes.add(row.className);
+  });
+
+  // Đảm bảo mọi giáo viên có trong TKB đều được thống kê
+  allTeachers.forEach(tName => {
+    if (!statsTeacher[tName]) {
+      let totalAssigned = 0;
+      const subjects = new Set<string>();
+      const classes = new Set<string>();
+      targetClasses.forEach(cls => {
+        schedule[cls]?.forEach(day => {
+          day?.forEach(session => {
+            if (session && session.teacher && session.teacher.trim().toLowerCase() === tName.toLowerCase()) {
+              totalAssigned++;
+              subjects.add(session.subject);
+              classes.add(cls);
+            }
+          });
+        });
+      });
+      statsTeacher[tName] = { subjects, total: totalAssigned, classes };
+    }
   });
 
   const wsDataTeacher: any[][] = [
@@ -398,7 +429,7 @@ export const exportScheduleToExcel = async (
       {
         t: 'n',
         v: data.total,
-        f: `COUNTIF(${fullTkbGridRange}, "*${name}*")`
+        f: `COUNTIF(${fullTkbGridRange}, "*(${name.trim()})*")`
       },
       data.classes.size,
       ''
@@ -476,9 +507,22 @@ export const exportScheduleToExcel = async (
   let maxDropdownRows = allTeachers.length;
 
   targetClasses.forEach(cls => {
-    const classAssignments = rawData.filter(r => r.className === cls);
+    const assignmentSet = new Set<string>();
+    rawData.filter(r => r.className === cls).forEach(r => {
+      if (r.subject && r.teacher) {
+        assignmentSet.add(`${r.subject.trim()} (${r.teacher.trim()})`);
+      }
+    });
+    schedule[cls]?.forEach(day => {
+      day?.forEach(session => {
+        if (session && session.subject && session.teacher) {
+          assignmentSet.add(`${session.subject.trim()} (${session.teacher.trim()})`);
+        }
+      });
+    });
+
     const options = [
-      ...Array.from(new Set(classAssignments.map(r => `${r.subject} (${r.teacher})`))),
+      ...Array.from(assignmentSet),
       'Chào cờ',
       'Sinh hoạt',
       '(Trống)'
