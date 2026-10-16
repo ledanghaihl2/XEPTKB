@@ -1,4 +1,4 @@
-import { InputRow, TimetableGrid, ScheduleResult, Constraint, ShiftType } from '../types';
+import { InputRow, TimetableGrid, ScheduleResult, Constraint, ShiftType, ClassSession } from '../types';
 import { DAYS, PERIODS, CLASSES, isValidSlot, isPeriodInShift } from '../constants';
 
 // Nhóm các môn học trọng tâm (ưu tiên học vào các tiết sáng đầu buổi)
@@ -55,25 +55,31 @@ export function evaluateScheduleQuality(grid: TimetableGrid, allTeachers: string
     }
   });
 
-  // 2. Tính số tiết lủng của học sinh
+  // 2. Tính số tiết lủng & trống đầu ca của học sinh (Quy chuẩn Sư phạm)
   CLASSES.forEach(cls => {
     for (let d = 0; d < DAYS.length; d++) {
       const mSlots: number[] = [];
       for (let p = 0; p < 5; p++) {
         if (grid[cls]?.[d]?.[p]) mSlots.push(p);
       }
-      if (mSlots.length > 1) {
+      if (mSlots.length > 0) {
+        if (mSlots[0] > 0) {
+          studentGaps += mSlots[0]; // Trống Tiết 1 sáng (phải bắt đầu từ 0)
+        }
         const span = mSlots[mSlots.length - 1] - mSlots[0] + 1;
-        studentGaps += span - mSlots.length;
+        studentGaps += span - mSlots.length; // Lủng giữa ca sáng
       }
 
       const aSlots: number[] = [];
       for (let p = 5; p < 8; p++) {
         if (grid[cls]?.[d]?.[p]) aSlots.push(p);
       }
-      if (aSlots.length > 1) {
+      if (aSlots.length > 0) {
+        if (aSlots[0] > 5) {
+          studentGaps += aSlots[0] - 5; // Trống Tiết 1 chiều (phải bắt đầu từ 5)
+        }
         const span = aSlots[aSlots.length - 1] - aSlots[0] + 1;
-        studentGaps += span - aSlots.length;
+        studentGaps += span - aSlots.length; // Lủng giữa ca chiều
       }
     }
   });
@@ -120,6 +126,34 @@ function calculatePenalty(grid: TimetableGrid, unplacedCount = 0): number {
           penalty += (periods.length - 2) * 120; // Quá 2 tiết cùng môn trong 1 ngày
         }
       });
+
+      // Phạt cực nặng nếu học sinh bị trống Tiết 1 sáng/chiều hoặc bị lủng tiết giữa buổi
+      const mSlots: number[] = [];
+      const aSlots: number[] = [];
+      for (let p = 0; p < PERIODS.length; p++) {
+        if (grid[cls]?.[d]?.[p]) {
+          if (p < 5) mSlots.push(p);
+          else aSlots.push(p);
+        }
+      }
+      if (mSlots.length > 0) {
+        if (mSlots[0] !== 0) {
+          penalty += 5000 * mSlots[0]; // Phạt cực nặng nếu trống Tiết 1 sáng (bắt buộc bắt đầu từ slot 0)
+        }
+        const spanM = mSlots[mSlots.length - 1] - mSlots[0] + 1;
+        if (spanM > mSlots.length) {
+          penalty += (spanM - mSlots.length) * 5000; // Phạt cực nặng nếu lủng giữa ca sáng
+        }
+      }
+      if (aSlots.length > 0) {
+        if (aSlots[0] !== 5) {
+          penalty += 5000 * (aSlots[0] - 5); // Phạt cực nặng nếu trống Tiết 1 chiều (bắt buộc bắt đầu từ slot 5)
+        }
+        const spanA = aSlots[aSlots.length - 1] - aSlots[0] + 1;
+        if (spanA > aSlots.length) {
+          penalty += (spanA - aSlots.length) * 5000; // Phạt cực nặng nếu lủng giữa ca chiều
+        }
+      }
     }
   });
 
@@ -175,33 +209,30 @@ function calculatePenalty(grid: TimetableGrid, unplacedCount = 0): number {
 }
 
 /**
- * Kiểm tra xem lớp học có bị thủng lỗ tiết giữa buổi không
+ * Kiểm tra xem lớp học có bị thủng lỗ tiết giữa buổi hoặc không bắt đầu từ tiết 1 không:
+ * - Sáng (0..4): Nếu có học sáng, bắt buộc phải bắt đầu từ Tiết 1 sáng (p = 0) và học liên tục (0, 1, ..., N-1).
+ * - Chiều (5..7): Nếu có học chiều, bắt buộc phải bắt đầu từ Tiết 1 chiều (p = 5) và học liên tục (5, 6, ..., 5+M-1).
  */
 function checkClassHasGaps(grid: TimetableGrid, className: string, day: number): boolean {
-  // Sáng 0..4
-  let seenFilled = false;
-  let seenHoleAfterFilled = false;
-  for (let p = 0; p < 5; p++) {
-    const isFilled = !!grid[className]?.[day]?.[p];
-    if (isFilled) {
-      if (seenHoleAfterFilled) return true;
-      seenFilled = true;
-    } else {
-      if (seenFilled) seenHoleAfterFilled = true;
+  const mSlots: number[] = [];
+  const aSlots: number[] = [];
+  for (let p = 0; p < PERIODS.length; p++) {
+    if (grid[className]?.[day]?.[p]) {
+      if (p < 5) mSlots.push(p);
+      else aSlots.push(p);
     }
   }
 
-  // Chiều 5..7
-  seenFilled = false;
-  seenHoleAfterFilled = false;
-  for (let p = 5; p < 8; p++) {
-    const isFilled = !!grid[className]?.[day]?.[p];
-    if (isFilled) {
-      if (seenHoleAfterFilled) return true;
-      seenFilled = true;
-    } else {
-      if (seenFilled) seenHoleAfterFilled = true;
-    }
+  // Buổi sáng: nếu có tiết thì bắt buộc phải bắt đầu từ tiết 0 và liên tục không có lỗ hổng
+  if (mSlots.length > 0) {
+    if (mSlots[0] !== 0) return true;
+    if (mSlots[mSlots.length - 1] !== mSlots.length - 1) return true;
+  }
+
+  // Buổi chiều: nếu có tiết thì bắt buộc phải bắt đầu từ tiết 5 và liên tục không có lỗ hổng
+  if (aSlots.length > 0) {
+    if (aSlots[0] !== 5) return true;
+    if (aSlots[aSlots.length - 1] !== 5 + aSlots.length - 1) return true;
   }
 
   return false;
@@ -357,6 +388,130 @@ export function buildClassRuleMap(constraints: Constraint[], classes?: string[])
   });
 
   return classRuleMap;
+}
+
+function getPermutations<T>(arr: T[]): T[][] {
+  if (arr.length <= 1) return [arr];
+  const result: T[][] = [];
+  for (let i = 0; i < arr.length; i++) {
+    const current = arr[i];
+    const remaining = arr.slice(0, i).concat(arr.slice(i + 1));
+    const remainingPerms = getPermutations(remaining);
+    for (const perm of remainingPerms) {
+      result.push([current, ...perm]);
+    }
+  }
+  return result;
+}
+
+function findValidPermutation(
+  grid: TimetableGrid,
+  cls: string,
+  d: number,
+  sessions: ClassSession[],
+  targetPeriods: number[],
+  teacherBusySet: Set<string>,
+  fixedSlots: Set<string>,
+  classRuleMap?: Map<string, ClassShiftRule>
+): ClassSession[] | null {
+  const perms = getPermutations(sessions);
+
+  for (const perm of perms) {
+    let valid = true;
+    for (let i = 0; i < perm.length; i++) {
+      const s = perm[i];
+      const targetP = targetPeriods[i];
+
+      // 1. Ô hợp lệ của trường
+      if (!isValidSlot(d, targetP)) { valid = false; break; }
+
+      // 2. Ràng buộc ca học của lớp
+      if (!isSlotAllowedForClass(cls, d, targetP, classRuleMap)) { valid = false; break; }
+
+      // 3. Ô cố định của môn khác
+      if (fixedSlots.has(`${cls}_${d}_${targetP}`)) {
+        const currentSlotItem = grid[cls]?.[d]?.[targetP];
+        if (!currentSlotItem || currentSlotItem.subject !== s.subject) {
+          valid = false;
+          break;
+        }
+      }
+
+      // 4. GDTC không học tiết 4 sáng hoặc tiết 3 chiều
+      if (s.subject === 'GDTC' && (targetP === 4 || targetP === 7)) { valid = false; break; }
+
+      // 5. Giáo viên có bận ở lớp khác không (loại trừ cls vì các tiết của cls đang được dồn lại cùng nhau)
+      if (isTeacherBusyAt(grid, s.teacher, d, targetP, teacherBusySet, cls)) {
+        valid = false;
+        break;
+      }
+    }
+    if (valid) return perm;
+  }
+
+  return null;
+}
+
+/**
+ * Bộ dồn tiết và vá lỗ hổng (Gap Compaction & Healer Engine):
+ * Đảm bảo mọi ca học của lớp luôn bắt đầu từ Tiết 1 (slot 0 sáng hoặc slot 5 chiều)
+ * và không có bất kỳ tiết lủng nào ở giữa.
+ */
+function compactAndHealClassGaps(
+  grid: TimetableGrid,
+  teacherBusySet: Set<string>,
+  fixedSlots: Set<string>,
+  classRuleMap?: Map<string, ClassShiftRule>
+): void {
+  for (const cls of CLASSES) {
+    for (let d = 0; d < DAYS.length; d++) {
+      // 1. Dồn ca sáng (0..4) về các ô 0, 1, ..., N-1
+      const morningSlots: number[] = [];
+      for (let p = 0; p < 5; p++) {
+        if (grid[cls]?.[d]?.[p]) morningSlots.push(p);
+      }
+      if (morningSlots.length > 0 && morningSlots.length < 5) {
+        const isAlreadyCompacted = morningSlots[0] === 0 && morningSlots[morningSlots.length - 1] === morningSlots.length - 1;
+        if (!isAlreadyCompacted) {
+          const sessions = morningSlots.map(p => grid[cls][d][p]!);
+          const targetPeriods = Array.from({ length: sessions.length }, (_, i) => i);
+          const permResult = findValidPermutation(
+            grid, cls, d, sessions, targetPeriods, teacherBusySet, fixedSlots, classRuleMap
+          );
+          if (permResult) {
+            morningSlots.forEach(p => { grid[cls][d][p] = null; });
+            permResult.forEach((sess, idx) => {
+              const targetP = targetPeriods[idx];
+              grid[cls][d][targetP] = { ...sess, day: d, period: targetP };
+            });
+          }
+        }
+      }
+
+      // 2. Dồn ca chiều (5..7) về các ô 5, 6, ..., 5+M-1
+      const afternoonSlots: number[] = [];
+      for (let p = 5; p < 8; p++) {
+        if (grid[cls]?.[d]?.[p]) afternoonSlots.push(p);
+      }
+      if (afternoonSlots.length > 0 && afternoonSlots.length < 3) {
+        const isAlreadyCompacted = afternoonSlots[0] === 5 && afternoonSlots[afternoonSlots.length - 1] === 5 + afternoonSlots.length - 1;
+        if (!isAlreadyCompacted) {
+          const sessions = afternoonSlots.map(p => grid[cls][d][p]!);
+          const targetPeriods = Array.from({ length: sessions.length }, (_, i) => 5 + i);
+          const permResult = findValidPermutation(
+            grid, cls, d, sessions, targetPeriods, teacherBusySet, fixedSlots, classRuleMap
+          );
+          if (permResult) {
+            afternoonSlots.forEach(p => { grid[cls][d][p] = null; });
+            permResult.forEach((sess, idx) => {
+              const targetP = targetPeriods[idx];
+              grid[cls][d][targetP] = { ...sess, day: d, period: targetP };
+            });
+          }
+        }
+      }
+    }
+  }
 }
 
 /**
@@ -789,6 +944,8 @@ function generateInitialGrid(data: InputRow[], constraints: Constraint[] = []) {
     }
   }
 
+  compactAndHealClassGaps(bestGrid, teacherBusySet, fixedSlots, classRuleMap);
+
   return { grid: bestGrid, unassigned: bestUnassigned, unplacedCount: minUnplaced, classRuleMap };
 }
 
@@ -923,6 +1080,8 @@ function optimizeWithSimulatedAnnealing(
 
     temperature *= coolingRate;
   }
+
+  compactAndHealClassGaps(bestGrid, teacherBusySet, fixedSlots, classRuleMap);
 
   return bestGrid;
 }
